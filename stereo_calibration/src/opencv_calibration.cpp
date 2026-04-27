@@ -43,7 +43,7 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
     if (!grey_l.empty() && !grey_r.empty()) {
       if (imageSize.width == 0)
         imageSize = grey_l.size();
-      else if (imageSize != left_images.back().size()) {
+      else if (grey_l.size() != left_images.back().size()) {
         std::cerr << std::endl
                   << " !!! ERROR !!! " << std::endl
                   << "Frames number #" << i
