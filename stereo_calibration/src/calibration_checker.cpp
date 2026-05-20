@@ -164,7 +164,8 @@ DetectedBoardParams CalibrationChecker::getDetectedBoardParams(
   float area = compute_area(outside_corners);
   float skew = compute_skew(outside_corners);
 
-  if (area < min_target_area_ || skew < 0) {
+  float area_normalized = area / static_cast<float>(image_size.width * image_size.height);
+  if (area_normalized < min_target_area_ || skew < 0) {
     // Return invalid params
     params.size = -1.0f;
     params.skew = -1.0f;
