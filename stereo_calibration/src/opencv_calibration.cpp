@@ -89,13 +89,17 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
 
     if (found_l && found_r) {
 
+      // For HD (1920×1200): cv::Size(11, 11)
+      // For 4K (3840×2160): cv::Size(15, 15)
+      int win = (imageSize.width >= 3000) ? 15 : 11;
+
       cv::cornerSubPix(
-          left_images.at(i), pts_l_f, cv::Size(5, 5), cv::Size(-1, -1),
+          left_images.at(i), pts_l_f, cv::Size(win, win), cv::Size(-1, -1),
           cv::TermCriteria(cv::TermCriteria::EPS | cv::TermCriteria::MAX_ITER,
                            30, 0.001));
 
       cv::cornerSubPix(
-          right_images.at(i), pts_r_f, cv::Size(5, 5), cv::Size(-1, -1),
+          right_images.at(i), pts_r_f, cv::Size(win, win), cv::Size(-1, -1),
           cv::TermCriteria(cv::TermCriteria::EPS | cv::TermCriteria::MAX_ITER,
                            30, 0.001));    
 
