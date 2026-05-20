@@ -201,18 +201,6 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
     return EXIT_FAILURE;
   }
 
-  if (calib_data.T.at<double>(0) > 0) {
-    std::cerr
-        << std::endl
-        << "\t !! Warning !!" << std::endl
-        << "The value of the baseline has opposite sign than expected(T_x = "
-        << calib_data.T.at<double>(0) << ")." << std::endl;
-    std::cerr << "Swap left and right cameras and redo the calibration."
-              << std::endl;
-
-    return EXIT_FAILURE;
-  }
-
   constexpr double MIN_BASELINE = 30.0f;  // Minimum possible baseline in mm
 
   if (fabs(calib_data.T.at<double>(0)) < MIN_BASELINE) {
