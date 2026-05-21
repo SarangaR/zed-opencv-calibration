@@ -24,7 +24,7 @@ typedef struct _detected_board_params {
 // Constants
 const size_t DEFAULT_MIN_SAMPLES = 20;
 const size_t DEFAULT_MAX_SAMPLES = 50;
-const float DEFAULT_MIN_TARGET_AREA = 0.1f;  // Ignore checkerboards smaller than 10% of the image area
+const float DEFAULT_MIN_TARGET_AREA = 0.02f;  // Ignore checkerboards smaller than 10% of the image area
 const DetectedBoardParams DEFAULT_IDEAL_PARAMS = {
     cv::Point2f(
         0.65f,  // Checkerboard X position should cover 65% of the image width

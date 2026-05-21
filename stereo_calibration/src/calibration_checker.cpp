@@ -40,6 +40,7 @@ bool CalibrationChecker::testSample(const std::vector<cv::Point2f>& corners,
   DetectedBoardParams params = getDetectedBoardParams(corners, image_size);
 
   if (params.size < 0 || params.skew < 0) {
+    std::cout << " * Sample rejected." << std::endl;
     return false;  // Invalid parameters
   }
 
@@ -167,6 +168,10 @@ DetectedBoardParams CalibrationChecker::getDetectedBoardParams(
 
   float area_normalized = area / static_cast<float>(image_size.width * image_size.height);
   if (area_normalized < min_target_area_ || skew < 0) {
+    if (verbose_) {
+      std::cout << "  Rejected: Skew or Area not valid. Skew:" << skew
+                  << " - Area normalized: " << area_normalized << std::endl;
+    }
     // Return invalid params
     params.size = -1.0f;
     params.skew = -1.0f;
@@ -245,7 +250,7 @@ bool CalibrationChecker::isGoodSample(const DetectedBoardParams& params) {
   int idx = 0;
   for (auto& stored_params : paramDb_) {
     float dist = param_distance(params, stored_params);
-    if (dist < 0.2f) {
+    if (dist < 0.15f) {
       if (verbose_) {
         std::cout << "  Rejected: Too similar to sample #" << idx
                   << " (dist=" << dist << ")" << std::endl;

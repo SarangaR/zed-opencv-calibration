@@ -1,6 +1,9 @@
 #include "opencv_calibration.hpp"
 
+#include <algorithm>
 #include <filesystem>
+#include <iomanip>
+#include <numeric>
 
 int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
               int h_edges, int v_edges, double square_size, int serial,
@@ -148,11 +151,83 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
 
   auto err = calib_data.stereo_calibrate(
       object_points, pts_l, pts_r, imageSize,
-      cv::CALIB_FIX_INTRINSIC + cv::CALIB_ZERO_DISPARITY,
-      // cv::CALIB_USE_INTRINSIC_GUESS + cv::CALIB_ZERO_DISPARITY,
+      cv::CALIB_USE_INTRINSIC_GUESS,
       verbose);
 
   std::cout << "Done." << std::endl;
+
+  // Per-frame stereo outlier rejection (RadTan model only; fisheye solvePnP is unsupported)
+  if (calib_data.left.disto_model_RadTan && calib_data.right.disto_model_RadTan) {
+    std::vector<std::pair<double, int>> frame_errors;
+    frame_errors.reserve(pts_l.size());
+
+    for (int i = 0; i < (int)pts_l.size(); i++) {
+      cv::Mat rvec, tvec;
+      if (!cv::solvePnP(object_points[i], pts_l[i],
+                        calib_data.left.K, calib_data.left.D, rvec, tvec))
+        continue;
+
+      std::vector<cv::Point2f> proj_l, proj_r;
+      cv::projectPoints(object_points[i], rvec, tvec,
+                        calib_data.left.K, calib_data.left.D, proj_l);
+
+      cv::Mat R_l, R_r, t_r, rvec_r;
+      cv::Rodrigues(rvec, R_l);
+      R_r = calib_data.R * R_l;
+      t_r = calib_data.R * tvec + calib_data.T;
+      cv::Rodrigues(R_r, rvec_r);
+      cv::projectPoints(object_points[i], rvec_r, t_r,
+                        calib_data.right.K, calib_data.right.D, proj_r);
+
+      const int n = (int)pts_l[i].size();
+      double err_sq = 0.0;
+      for (int j = 0; j < n; j++) {
+        double dx_l = proj_l[j].x - pts_l[i][j].x;
+        double dy_l = proj_l[j].y - pts_l[i][j].y;
+        double dx_r = proj_r[j].x - pts_r[i][j].x;
+        double dy_r = proj_r[j].y - pts_r[i][j].y;
+        err_sq += dx_l*dx_l + dy_l*dy_l + dx_r*dx_r + dy_r*dy_r;
+      }
+      frame_errors.emplace_back(std::sqrt(err_sq / (2 * n)), i);
+    }
+
+    auto sorted = frame_errors;
+    std::sort(sorted.begin(), sorted.end());
+    const double median_err = sorted[sorted.size() / 2].first;
+    const double threshold = std::max(2.5 * median_err, max_repr_error);
+
+    std::vector<std::vector<cv::Point3f>> clean_obj;
+    std::vector<std::vector<cv::Point2f>> clean_l, clean_r;
+    int n_removed = 0;
+
+    for (auto& [fe, idx] : frame_errors) {
+      if (fe <= threshold) {
+        clean_obj.push_back(object_points[idx]);
+        clean_l.push_back(pts_l[idx]);
+        clean_r.push_back(pts_r[idx]);
+      } else {
+        std::cout << "\n  * Removing outlier frame #" << idx
+                  << " (stereo RMS=" << std::fixed << std::setprecision(2)
+                  << fe << " px, threshold=" << threshold << " px)";
+        n_removed++;
+      }
+    }
+
+    if (n_removed > 0) {
+      std::cout << "\n * Re-running stereo calibration after removing "
+                << n_removed << " outlier frame(s)" << std::endl;
+      if ((int)clean_obj.size() >= MIN_IMAGE) {
+        err = calib_data.stereo_calibrate(clean_obj, clean_l, clean_r, imageSize,
+                                          cv::CALIB_USE_INTRINSIC_GUESS, verbose);
+        std::cout << " * Stereo RMS after outlier removal: " << err << " px"
+                  << std::endl;
+      } else {
+        std::cout << " * Not enough frames left after outlier removal ("
+                  << clean_obj.size() << "/" << MIN_IMAGE
+                  << "). Keeping original calibration." << std::endl;
+      }
+    }
+  }
 
   std::cout << std::endl << "*** Calibration Report ***" << std::endl;
 

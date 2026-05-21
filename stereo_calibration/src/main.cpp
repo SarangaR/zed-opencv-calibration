@@ -52,21 +52,21 @@ const float min_avg_x_coverage =
 const float min_avg_y_coverage =
     0.65f;  // Checkerboard Y position covering percentage of the image height
 const float min_area_range =
-    0.4f;  // Checkerboard area range size [min_area-max_area]
+    0.38f;  // Checkerboard area range size [min_area-max_area]
 const float min_skew_range =
-    0.35f;  // Checkerboard skew ange size [min_skew-max_skew]
+    0.335f;  // Checkerboard skew ange size [min_skew-max_skew]
 const float min_b_x_coverage = 0.8f;  // Checkerboard X position close to border
                                       // covering percentage of the image width
 const float min_b_y_coverage = 0.8f;  // Checkerboard Y position close to border
                                       // covering percentage of the image height
 
-const float min_target_area = 0.1f;  // Ignore checkerboards smaller than this
+const float min_target_area = 0.02f;  // Ignore checkerboards smaller than this
                                      // area (percentage of image area)
 const double min_sharpness = 100.0;  // Laplacian variance threshold — frames below
                                      // this are considered blurry and rejected
 
 // Debug
-bool verbose = true;
+bool verbose = false;
 int sdk_verbose = 0;
 
 // SIDE-by-SIDE or TOP-BOTTOM image stacking for display
@@ -607,6 +607,7 @@ int main(int argc, char* argv[]) {
                       cv::Point(h_pos + 5 * h_space, v_pos),
                       cv::FONT_HERSHEY_SIMPLEX, font_scale, info_color, 2);
 
+          // X
           v_pos += v_space;
           draw_text_row(
               "X [px]", v_pos,
@@ -615,6 +616,7 @@ int main(int argc, char* argv[]) {
               static_cast<int>(min_b_x_coverage * camera_resolution.width),
               min_b_x_coverage, pos_score_x);
 
+          // Y
           v_pos += v_space;
           draw_text_row(
               "Y [px]", v_pos,
@@ -622,6 +624,8 @@ int main(int argc, char* argv[]) {
               static_cast<int>(max_by * camera_resolution.height),
               static_cast<int>(min_b_y_coverage * camera_resolution.height),
               min_b_y_coverage, pos_score_y);
+
+          // Size
           v_pos += v_space;
           draw_text_row(
               "Size [sq. px]", v_pos,
@@ -632,11 +636,13 @@ int main(int argc, char* argv[]) {
               static_cast<int>(min_area_range * camera_resolution.height *
                                camera_resolution.width),
               min_area_range, size_score);
+          
+          // Skew
           v_pos += v_space;
           draw_text_row("Skew [deg]", v_pos, static_cast<int>(min_skew * 90.0f),
                         static_cast<int>(max_skew * 90.0f),
                         static_cast<int>(min_skew_range * 90.0f),
-                        min_skew_range * 90.0f, skew_score);
+                        static_cast<int>(min_skew_range * 90.0f), skew_score);
 
           std::stringstream ss_img_count;
           v_pos += v_space;
