@@ -4,10 +4,11 @@ A camera calibration toolkit for ZED cameras using OpenCV.
 
 ## Overview
 
-This project provides two main applications for working with ZED cameras:
+This project provides three main applications for working with ZED cameras:
 
-1. **Stereo Calibration Tool** - Interactive calibration data acquisition and processing.
-2. **Stereo Reprojection Viewer** - Real-time reprojection tool to visualize calibration results on unrectified images.
+1. **Monocular Calibration Tool** - Interactive calibration for single ZED X One cameras.
+2. **Stereo Calibration Tool** - Interactive calibration data acquisition and processing for stereo cameras and virtual stereo rigs.
+3. **Stereo Reprojection Viewer** - Real-time reprojection tool to visualize calibration results on unrectified images.
 
 ## Requirements
 
@@ -33,7 +34,7 @@ Open a terminal on your Linux system and execute the following commands:
 git clone https://github.com/stereolabs/zed-opencv-calibration.git
 cd zed-opencv-calibration
 
-# Build the stereo calibration tool and the reprojection viewer
+# Build all tools (monocular calibration, stereo calibration, reprojection viewer)
 mkdir build && cd build
 cmake ..
 make -j$(nproc)
@@ -41,9 +42,69 @@ make -j$(nproc)
 
 ## Usage
 
+### Monocular Calibration
+
+The **Monocular Calibration Tool** computes intrinsic camera parameters (focal length, principal point, distortion coefficients) for a single ZED X One camera using a checkerboard pattern.
+
+#### Run the Monocular Calibration
+
+```bash
+cd build/monocular_calibration/
+./zed_mono_calibration
+```
+
+This command opens the first connected ZED X One camera for live calibration using the default checkerboard settings.
+
+```bash
+Usage: ./zed_mono_calibration [options]
+  --h_edges <value>      Number of horizontal inner edges of the checkerboard
+  --v_edges <value>      Number of vertical inner edges of the checkerboard
+  --square_size <value>  Size of a square in the checkerboard (in mm)
+  --svo <file>           Path to the SVO file.
+  --fisheye              Use fisheye lens model.
+  --id <id>              Camera ID of the ZED X One.
+  --sn <sn>              Serial number of the ZED X One.
+  --help, -h             Show this help message.
+```
+
+#### Monocular Calibration Example Commands
+
+- ZED X One using the default (first) camera:
+
+  `./zed_mono_calibration`
+
+- ZED X One selected by serial number:
+
+  `./zed_mono_calibration --sn <serial_number>`
+
+- ZED X One using an SVO file:
+
+  `./zed_mono_calibration --svo <full_path_to_svo_file>`
+
+- ZED X One with fisheye lens model and a custom checkerboard:
+
+  `./zed_mono_calibration --fisheye --h_edges 12 --v_edges 9 --square_size 30.0`
+
+>:pushpin: **Note**: You can obtain the serial number or ID of connected ZED X One cameras by running `ZED_Explorer --all`.
+
+#### Monocular Calibration Process
+
+The process follows the same two-phase approach as stereo calibration:
+
+1. **Data Acquisition**: Move the checkerboard in front of the camera to capture diverse views. Press **Spacebar** or **S** to save a frame when the board is visible and sharp. The tool enforces quality checks (sharpness, sample diversity) and shows real-time X/Y coverage, size range, and skew scores.
+
+2. **Calibration Computation**: Once sufficient data is collected (all metrics at 100% with the minimum number of samples, or the maximum sample count reached), the tool computes the calibration and saves two output files:
+
+   - `mono_calibration_SN<serial_number>.yml`: Intrinsic parameters in OpenCV format (K matrix and distortion coefficients).
+   - `SN<serial_number>_mono.conf`: Intrinsic parameters per resolution in ZED-compatible format, covering all supported output resolutions of the camera:
+     - **ZED X One GS** (1920×1200): `CAM_FHD1200`, `CAM_FHD`, `CAM_SVGA`
+     - **ZED X One 4K** (3840×2160): `CAM_4k`, `CAM_QHDPLUS`, `CAM_FHD`, `CAM_FHD1200`
+
+You can use the OpenCV output file in your ZED SDK applications via the `sl::InitParametersOne::optional_opencv_calibration_file` parameter.
+
 ### Stereo Calibration
 
-The **Stereo Calibration Tool** enables precise calibration of ZED stereo cameras and virtual stereo rigs (e.g., two ZED X One cameras) using a checkerboard pattern. This process computes intrinsic camera parameters (focal length, principal point, distortion coefficients) and extrinsic parameters (relative position and orientation between cameras).
+The **Stereo Calibration Tool** enables precise calibration of ZED stereo cameras and virtual stereo rigs (e.g., two ZED X One cameras) using a checkerboard pattern. This process computes intrinsic camera parameters (focal length, principal point, distortion coefficients) and extrinsic parameters (relative position and orientation between cameras). For single ZED X One cameras, use the [Monocular Calibration Tool](#monocular-calibration) instead.
 
 #### Checkerboard Pattern Requirements
 
@@ -124,7 +185,7 @@ The **Data Acquisition** phase consists of moving the checkerboard in front of t
 
 When the checkerboard is placed in a position that you want to capture, press the **Spacebar** or the **S** key to capture the images.
 
-- If the checkerboard is detected in both images, and the captured data are different enough from the previously captured images, the data is accepted, and the quality indicators are updated.
+- If the checkerboard is detected in the image(s), and the captured data are different enough from the previously captured images, the data is accepted, and the quality indicators are updated.
 - If the data is not accepted, a message is displayed in the GUI output indicating the reason (e.g., checkerboard not detected, not enough variation, etc.).
 
 The blue dots that appear on the left image indicate the center of each checkerboard that has been detected and accepted so far. The size of the dots indicates the relative size of the checkerboard in the image (bigger dots mean closer to the camera).
@@ -171,7 +232,7 @@ For each metric, the GUI shows the following information in a table:
 You can follow the steps of the calibration process in the terminal output:
 
 1. The left camera is calibrated first, followed by the right camera to obtain the intrinsic parameters.
-2. Finally, the stereo calibration is performed to compute the extrinsic parameters between the two cameras.
+2. Finally, the stereo calibration is performed to compute the extrinsic parameters (rotation and translation) between the two cameras.
 
 Good calibration results typically yield a reprojection error below 0.5 pixels for each calibration step.
 
