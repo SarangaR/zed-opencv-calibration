@@ -92,9 +92,6 @@ cv::Mat slMat2cvMat(sl::Mat &input) {
     case sl::MAT_TYPE::U8_C3:
       cv_type = CV_8UC3;
       break;
-    case sl::MAT_TYPE::U8_C3:
-      cv_type = CV_8UC3;
-      break;
     default:
       break;
   }
