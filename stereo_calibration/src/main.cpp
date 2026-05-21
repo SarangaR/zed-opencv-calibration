@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <iomanip>
 #include <sstream>
 
 #include "calibration_checker.hpp"
@@ -61,9 +62,11 @@ const float min_b_y_coverage = 0.8f;  // Checkerboard Y position close to border
 
 const float min_target_area = 0.1f;  // Ignore checkerboards smaller than this
                                      // area (percentage of image area)
+const double min_sharpness = 100.0;  // Laplacian variance threshold — frames below
+                                     // this are considered blurry and rejected
 
 // Debug
-bool verbose = false;
+bool verbose = true;
 int sdk_verbose = 0;
 
 // SIDE-by-SIDE or TOP-BOTTOM image stacking for display
@@ -404,10 +407,20 @@ int main(int argc, char* argv[]) {
       return 1;
     }
 
+    auto computeSharpness = [](const cv::Mat& bgr) -> double {
+      cv::Mat grey, lap;
+      cv::cvtColor(bgr, grey, cv::COLOR_BGR2GRAY);
+      cv::Laplacian(grey, lap, CV_64F);
+      cv::Scalar mean, stddev;
+      cv::meanStdDev(lap, mean, stddev);
+      return stddev.val[0] * stddev.val[0];
+    };
+
     char key = ' ';
     // bool coverage_mode = false;
     bool missing_target_on_last_pics = false;
     bool low_target_variability_on_last_pics = false;
+    bool blurry_images = false;
 
     const std::string window_name = "ZED Calibration";
     cv::namedWindow(window_name, cv::WINDOW_KEEPRATIO);
@@ -473,7 +486,7 @@ int main(int argc, char* argv[]) {
               0.7, info_color, 2);
         } else {
           if (missing_target_on_last_pics ||
-              low_target_variability_on_last_pics) {
+              low_target_variability_on_last_pics || blurry_images) {
             cv::putText(
                 rendering_image, "Frames not saved for calibration.",
                 cv::Point(display.size[1] / 2 - 20, display.size[0] + 285),
@@ -492,6 +505,14 @@ int main(int argc, char* argv[]) {
                 rendering_image,
                 " * Target too similar to a previous acquisition or too small.",
                 cv::Point(display.size[1] / 2 - 20, display.size[0] + 345),
+                cv::FONT_HERSHEY_SIMPLEX, 0.75, warn_color, 2);
+          }
+
+          if (blurry_images) {
+            cv::putText(
+                rendering_image,
+                " * Images too blurry. Hold the target still when saving.",
+                cv::Point(display.size[1] / 2 - 20, display.size[0] + 375),
                 cv::FONT_HERSHEY_SIMPLEX, 0.75, warn_color, 2);
           }
 
@@ -639,6 +660,7 @@ int main(int argc, char* argv[]) {
           std::cout << "*** New acquisition triggered ***" << std::endl;
 
           missing_target_on_last_pics = !found_r || !found_l;
+          blurry_images = false;
 
           if (found_l && found_r) {
             auto scaled_pts_l = pts_l;
@@ -649,7 +671,16 @@ int main(int argc, char* argv[]) {
                 pts_r, display_size,
                 cv::Size(camera_resolution.width, camera_resolution.height));
 
-            if (checker.testSample(pts_l, cv::Size(camera_resolution.width,
+            double sharpness_l = computeSharpness(rgb_l);
+            double sharpness_r = computeSharpness(rgb_r);
+            blurry_images = sharpness_l < min_sharpness || sharpness_r < min_sharpness;
+            if (blurry_images) {
+              std::cerr << "  ! Images too blurry (L=" << std::fixed
+                        << std::setprecision(1) << sharpness_l
+                        << " R=" << sharpness_r
+                        << ", min=" << min_sharpness << "). Hold still and retry."
+                        << std::endl;
+            } else if (checker.testSample(pts_l, cv::Size(camera_resolution.width,
                                                    camera_resolution.height))) {
               low_target_variability_on_last_pics = false;
 

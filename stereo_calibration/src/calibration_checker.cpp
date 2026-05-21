@@ -81,6 +81,7 @@ float CalibrationChecker::compute_skew(
     float dot = ab.x * cb.x + ab.y * cb.y;
     float norm_ab = std::sqrt(ab.x * ab.x + ab.y * ab.y);
     float norm_cb = std::sqrt(cb.x * cb.x + cb.y * cb.y);
+    if (norm_ab < 1e-6f || norm_cb < 1e-6f) return 0.0f;
     float cos_angle = dot / (norm_ab * norm_cb);
     if (cos_angle < -1.0f)
       cos_angle = -1.0f;
