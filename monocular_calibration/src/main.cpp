@@ -37,7 +37,7 @@ void applyCoverageIndicatorOverlay(cv::Mat& image,
 void applyPosIndicatorOverlay(cv::Mat& image, const cv::Mat& pos_indicator);
 
 /// Rendering
-constexpr int text_area_height = 380;
+constexpr int text_area_width = 750;
 const cv::Size display_size(720, 404);
 
 /// Calibration condition
@@ -276,8 +276,8 @@ int main(int argc, char* argv[]) {
 
     const std::string window_name = "ZED X One Calibration";
     cv::namedWindow(window_name, cv::WINDOW_KEEPRATIO);
-    cv::resizeWindow(window_name, display_size.width,
-                     display_size.height + text_area_height);
+    cv::resizeWindow(window_name, display_size.width + text_area_width,
+                     display_size.height);
 
     while (1) {
       if (key == 'q' || key == 'Q' || key == 27) {
@@ -307,125 +307,93 @@ int main(int argc, char* argv[]) {
         display = rgb_d_fill;
 
         cv::Mat text_info = cv::Mat::ones(
-            cv::Size(display.size[1], text_area_height), display.type());
-        cv::vconcat(display, text_info, rendering_image);
+            cv::Size(text_area_width, display.size[0]), display.type());
 
         if (acquisition_completed) {
-          cv::putText(rendering_image,
-                      "Acquisition completed! Wait for the calibration "
-                      "computation to complete...",
-                      cv::Point(20, display.size[0] + 50),
-                      cv::FONT_HERSHEY_SIMPLEX, 0.7, info_color, 2);
+          cv::putText(text_info,
+                      "Acquisition completed!",
+                      cv::Point(10, 50),
+                      cv::FONT_HERSHEY_SIMPLEX, 0.6, info_color, 2);
+          cv::putText(text_info,
+                      "Wait for calibration to complete...",
+                      cv::Point(10, 78), cv::FONT_HERSHEY_SIMPLEX,
+                      0.6, info_color, 2);
           cv::putText(
-              rendering_image,
-              "Follow the console log for calibration progress details.",
-              cv::Point(20, display.size[0] + 80), cv::FONT_HERSHEY_SIMPLEX,
-              0.7, info_color, 2);
+              text_info,
+              "Follow the console log for details.",
+              cv::Point(10, 106), cv::FONT_HERSHEY_SIMPLEX,
+              0.55, info_color, 2);
         } else {
-          if (missing_target || low_target_variability || blurry_image) {
-            cv::putText(
-                rendering_image, "Frame not saved for calibration.",
-                cv::Point(20, display.size[0] + 285),
-                cv::FONT_HERSHEY_SIMPLEX, 0.75, warn_color, 2);
-          }
-
-          if (missing_target) {
-            cv::putText(
-                rendering_image, " * Target not detected.",
-                cv::Point(20, display.size[0] + 315),
-                cv::FONT_HERSHEY_SIMPLEX, 0.75, warn_color, 2);
-          }
-
-          if (low_target_variability) {
-            cv::putText(
-                rendering_image,
-                " * Target too similar to a previous acquisition or too small.",
-                cv::Point(20, display.size[0] + 345),
-                cv::FONT_HERSHEY_SIMPLEX, 0.75, warn_color, 2);
-          }
-
-          if (blurry_image) {
-            cv::putText(
-                rendering_image,
-                " * Image too blurry. Hold the target still when saving.",
-                cv::Point(20, display.size[0] + 375),
-                cv::FONT_HERSHEY_SIMPLEX, 0.75, warn_color, 2);
-          }
-
           cv::putText(
-              rendering_image,
-              "Press 's' or the spacebar to save the current frame when "
-              "the target is visible.",
-              cv::Point(10, display.size[0] + 25), cv::FONT_HERSHEY_SIMPLEX,
-              0.7, info_color, 1);
-
+              text_info,
+              "Press 's' or spacebar to save the current frame.",
+              cv::Point(10, 16), cv::FONT_HERSHEY_SIMPLEX,
+              0.5, info_color, 1);
           cv::putText(
-              rendering_image,
-              "Move the target horizontally, vertically, forward "
-              "and backward, and rotate it to improve "
-              "coverage and variability scores.",
-              cv::Point(10, display.size[0] + 45), cv::FONT_HERSHEY_SIMPLEX,
-              0.5, warn_color, 1);
+              text_info,
+              "Move target to improve coverage and variability.",
+              cv::Point(10, 34), cv::FONT_HERSHEY_SIMPLEX,
+              0.45, warn_color, 1);
 
           // ----> Draw Status Info <---- //
-          int v_pos = display.size[0] + 80;
-          int v_space = 33;
+          int v_pos = 60;
+          int v_space = 28;
           int h_pos = 10;
-          int h_space = 180;
-          double font_scale = 0.7;
+          int h_space = 130;
+          double font_scale = 0.6;
 
-          auto draw_text_row = [&rendering_image, h_pos, h_space, font_scale,
+          auto draw_text_row = [&text_info, h_pos, h_space, font_scale,
                                  info_color, warn_color](
                                     const std::string& label, int v_pos,
                                     int min_val, int max_val, int req_i,
                                     float score) {
-            cv::putText(rendering_image, label, cv::Point(h_pos, v_pos),
+            cv::putText(text_info, label, cv::Point(h_pos, v_pos),
                         cv::FONT_HERSHEY_SIMPLEX, font_scale,
                         (score >= 1.0f ? info_color : warn_color), 1);
-            cv::putText(rendering_image, std::to_string(min_val),
+            cv::putText(text_info, std::to_string(min_val),
                         cv::Point(h_pos + h_space, v_pos),
                         cv::FONT_HERSHEY_SIMPLEX, font_scale,
                         (score >= 1.0f ? info_color : warn_color), 1);
-            cv::putText(rendering_image, std::to_string(max_val),
+            cv::putText(text_info, std::to_string(max_val),
                         cv::Point(h_pos + 2 * h_space, v_pos),
                         cv::FONT_HERSHEY_SIMPLEX, font_scale,
                         (score >= 1.0f ? info_color : warn_color), 1);
-            cv::putText(rendering_image, std::to_string(max_val - min_val),
+            cv::putText(text_info, std::to_string(max_val - min_val),
                         cv::Point(h_pos + 3 * h_space, v_pos),
                         cv::FONT_HERSHEY_SIMPLEX, font_scale,
                         (score >= 1.0f ? info_color : warn_color), 1);
-            cv::putText(rendering_image, std::to_string(req_i),
+            cv::putText(text_info, std::to_string(req_i),
                         cv::Point(h_pos + 4 * h_space, v_pos),
                         cv::FONT_HERSHEY_SIMPLEX, font_scale,
                         (score >= 1.0f ? info_color : warn_color), 1);
             std::stringstream ss;
             ss << std::fixed << std::setprecision(2) << score * 100.0f << "%";
-            cv::putText(rendering_image, ss.str(),
+            cv::putText(text_info, ss.str(),
                         cv::Point(h_pos + 5 * h_space, v_pos),
                         cv::FONT_HERSHEY_SIMPLEX, font_scale,
                         (score >= 1.0f ? info_color : warn_color), 1);
           };
 
-          cv::putText(rendering_image, "Sample Collection Status",
+          cv::putText(text_info, "Sample Collection Status",
                       cv::Point(10, v_pos), cv::FONT_HERSHEY_SIMPLEX,
                       font_scale, info_color, 2);
 
           v_pos += v_space;
-          cv::putText(rendering_image, "METRIC", cv::Point(h_pos, v_pos),
+          cv::putText(text_info, "METRIC", cv::Point(h_pos, v_pos),
                       cv::FONT_HERSHEY_SIMPLEX, font_scale, info_color, 2);
-          cv::putText(rendering_image, "MIN_VAL",
+          cv::putText(text_info, "MIN",
                       cv::Point(h_pos + h_space, v_pos),
                       cv::FONT_HERSHEY_SIMPLEX, font_scale, info_color, 2);
-          cv::putText(rendering_image, "MAX_VAL",
+          cv::putText(text_info, "MAX",
                       cv::Point(h_pos + 2 * h_space, v_pos),
                       cv::FONT_HERSHEY_SIMPLEX, font_scale, info_color, 2);
-          cv::putText(rendering_image, "COVERAGE",
+          cv::putText(text_info, "RANGE",
                       cv::Point(h_pos + 3 * h_space, v_pos),
                       cv::FONT_HERSHEY_SIMPLEX, font_scale, info_color, 2);
-          cv::putText(rendering_image, "REQUIRED",
+          cv::putText(text_info, "REQ",
                       cv::Point(h_pos + 4 * h_space, v_pos),
                       cv::FONT_HERSHEY_SIMPLEX, font_scale, info_color, 2);
-          cv::putText(rendering_image, "SCORE",
+          cv::putText(text_info, "SCORE",
                       cv::Point(h_pos + 5 * h_space, v_pos),
                       cv::FONT_HERSHEY_SIMPLEX, font_scale, info_color, 2);
 
@@ -447,7 +415,7 @@ int main(int argc, char* argv[]) {
 
           v_pos += v_space;
           draw_text_row(
-              "Size [sq. px]", v_pos,
+              "Size [sq.px]", v_pos,
               static_cast<int>(min_size * camera_resolution.height *
                                camera_resolution.width),
               static_cast<int>(max_size * camera_resolution.height *
@@ -465,14 +433,42 @@ int main(int argc, char* argv[]) {
 
           v_pos += v_space;
           std::stringstream ss_img_count;
-          ss_img_count << "* Sample saved: " << std::max(image_count, 0)
+          ss_img_count << "Samples: " << std::max(image_count, 0)
                        << " [min. " << min_samples << ","
                        << " max. " << max_samples << "]";
-          cv::putText(rendering_image, ss_img_count.str(),
-                      cv::Point(10, v_pos), cv::FONT_HERSHEY_SIMPLEX, 0.7,
+          cv::putText(text_info, ss_img_count.str(),
+                      cv::Point(10, v_pos), cv::FONT_HERSHEY_SIMPLEX, 0.6,
                       (image_count > min_samples ? info_color : warn_color), 1);
+
+          if (missing_target || low_target_variability || blurry_image) {
+            cv::putText(
+                text_info, "Frame not saved for calibration.",
+                cv::Point(10, v_pos + 35),
+                cv::FONT_HERSHEY_SIMPLEX, 0.6, warn_color, 2);
+          }
+          if (missing_target) {
+            cv::putText(
+                text_info, " * Target not detected.",
+                cv::Point(10, v_pos + 60),
+                cv::FONT_HERSHEY_SIMPLEX, 0.6, warn_color, 2);
+          }
+          if (low_target_variability) {
+            cv::putText(
+                text_info,
+                " * Target too similar or too small.",
+                cv::Point(10, v_pos + 85),
+                cv::FONT_HERSHEY_SIMPLEX, 0.55, warn_color, 2);
+          }
+          if (blurry_image) {
+            cv::putText(
+                text_info,
+                " * Image too blurry. Hold the target still.",
+                cv::Point(10, v_pos + 110),
+                cv::FONT_HERSHEY_SIMPLEX, 0.55, warn_color, 2);
+          }
         }
 
+        cv::hconcat(display, text_info, rendering_image);
         cv::imshow(window_name, rendering_image);
         key = cv::waitKey(10);
 
