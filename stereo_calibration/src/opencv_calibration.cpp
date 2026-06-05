@@ -137,7 +137,7 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
         << std::endl;
   }
 
-  std::cout << std::endl << " *** Monocular cameras calibration *** " << std::endl;
+  std::cout << std::endl << "*** Monocular cameras calibration *** " << std::endl;
 
   std::cout << " * Left camera calibration... " << std::flush;
   auto rms_l = calib_data.left.mono_calibrate(object_points, pts_l, imageSize,
@@ -211,7 +211,7 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
     }
 
     if (n_removed > 0) {
-      std::cout << "\n * Re-running mono calibrations after removing "
+      std::cout << "\n   * Re-running mono calibrations after removing "
                 << n_removed << " outlier frame(s)" << std::endl;
       if ((int)clean_obj.size() >= MIN_IMAGE) {
         obj_clean   = clean_obj;
@@ -221,17 +221,17 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
                                                cv::CALIB_USE_INTRINSIC_GUESS, verbose);
         rms_r = calib_data.right.mono_calibrate(clean_obj, clean_r, imageSize,
                                                 cv::CALIB_USE_INTRINSIC_GUESS, verbose);
-        std::cout << " * Mono RMS after outlier removal — Left: " << rms_l
+        std::cout << "   * Mono RMS after outlier removal — Left: " << rms_l
                   << " px, Right: " << rms_r << " px" << std::endl;
       } else {
-        std::cout << " * Not enough frames left after outlier removal ("
+        std::cout << "   * Not enough frames left after outlier removal ("
                   << clean_obj.size() << "/" << MIN_IMAGE
                   << "). Keeping original calibration." << std::endl;
       }
     }
   }
 
-  std::cout << std::endl << " *** Stereo calibration *** " << std::endl;
+  std::cout << std::endl << "*** Stereo calibration *** " << std::endl;
 
   std::cout << " * Calibration... " << std::flush;
 
@@ -302,7 +302,7 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
     }
 
     if (n_removed > 0) {
-      std::cout << "\n * Re-running calibration after removing "
+      std::cout << "\n   * Re-running calibration after removing "
                 << n_removed << " stereo outlier frame(s)" << std::endl;
       if ((int)clean_obj2.size() >= MIN_IMAGE) {
         rms_l = calib_data.left.mono_calibrate(clean_obj2, clean_l2, imageSize,
@@ -311,11 +311,11 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
                                                 cv::CALIB_USE_INTRINSIC_GUESS, verbose);
         err = calib_data.stereo_calibrate(clean_obj2, clean_l2, clean_r2, imageSize,
                                           cv::CALIB_USE_INTRINSIC_GUESS, verbose);
-        std::cout << " * RMS after stereo outlier removal — Left: " << rms_l
+        std::cout << "   * RMS after stereo outlier removal — Left: " << rms_l
                   << " px, Right: " << rms_r << " px, Stereo: " << err << " px"
                   << std::endl;
       } else {
-        std::cout << " * Not enough frames left after stereo outlier removal ("
+        std::cout << "   * Not enough frames left after stereo outlier removal ("
                   << clean_obj2.size() << "/" << MIN_IMAGE
                   << "). Keeping previous calibration." << std::endl;
       }
