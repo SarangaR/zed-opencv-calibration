@@ -147,36 +147,29 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
                                                flags, verbose);
   std::cout << "Done." << std::endl;
 
-  std::cout << "Stereo calibration... " << std::flush;
+  // Per-frame outlier rejection based on per-camera reprojection error
+  // (RadTan model only; fisheye solvePnP is unsupported)
+  auto obj_clean = object_points;
+  auto pts_l_clean = pts_l;
+  auto pts_r_clean = pts_r;
 
-  auto err = calib_data.stereo_calibrate(
-      object_points, pts_l, pts_r, imageSize,
-      cv::CALIB_USE_INTRINSIC_GUESS,
-      verbose);
-
-  std::cout << "Done." << std::endl;
-
-  // Per-frame stereo outlier rejection (RadTan model only; fisheye solvePnP is unsupported)
   if (calib_data.left.disto_model_RadTan && calib_data.right.disto_model_RadTan) {
     std::vector<std::pair<double, int>> frame_errors;
     frame_errors.reserve(pts_l.size());
 
     for (int i = 0; i < (int)pts_l.size(); i++) {
-      cv::Mat rvec, tvec;
+      cv::Mat rvec_l, tvec_l, rvec_r, tvec_r;
       if (!cv::solvePnP(object_points[i], pts_l[i],
-                        calib_data.left.K, calib_data.left.D, rvec, tvec))
+                        calib_data.left.K, calib_data.left.D, rvec_l, tvec_l))
+        continue;
+      if (!cv::solvePnP(object_points[i], pts_r[i],
+                        calib_data.right.K, calib_data.right.D, rvec_r, tvec_r))
         continue;
 
       std::vector<cv::Point2f> proj_l, proj_r;
-      cv::projectPoints(object_points[i], rvec, tvec,
+      cv::projectPoints(object_points[i], rvec_l, tvec_l,
                         calib_data.left.K, calib_data.left.D, proj_l);
-
-      cv::Mat R_l, R_r, t_r, rvec_r;
-      cv::Rodrigues(rvec, R_l);
-      R_r = calib_data.R * R_l;
-      t_r = calib_data.R * tvec + calib_data.T;
-      cv::Rodrigues(R_r, rvec_r);
-      cv::projectPoints(object_points[i], rvec_r, t_r,
+      cv::projectPoints(object_points[i], rvec_r, tvec_r,
                         calib_data.right.K, calib_data.right.D, proj_r);
 
       const int n = (int)pts_l[i].size();
@@ -207,20 +200,25 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
         clean_r.push_back(pts_r[idx]);
       } else {
         std::cout << "\n  * Removing outlier frame #" << idx
-                  << " (stereo RMS=" << std::fixed << std::setprecision(2)
+                  << " (mono RMS=" << std::fixed << std::setprecision(2)
                   << fe << " px, threshold=" << threshold << " px)";
         n_removed++;
       }
     }
 
     if (n_removed > 0) {
-      std::cout << "\n * Re-running stereo calibration after removing "
+      std::cout << "\n * Re-running mono calibrations after removing "
                 << n_removed << " outlier frame(s)" << std::endl;
       if ((int)clean_obj.size() >= MIN_IMAGE) {
-        err = calib_data.stereo_calibrate(clean_obj, clean_l, clean_r, imageSize,
-                                          cv::CALIB_USE_INTRINSIC_GUESS, verbose);
-        std::cout << " * Stereo RMS after outlier removal: " << err << " px"
-                  << std::endl;
+        obj_clean   = clean_obj;
+        pts_l_clean = clean_l;
+        pts_r_clean = clean_r;
+        rms_l = calib_data.left.mono_calibrate(clean_obj, clean_l, imageSize,
+                                               cv::CALIB_USE_INTRINSIC_GUESS, verbose);
+        rms_r = calib_data.right.mono_calibrate(clean_obj, clean_r, imageSize,
+                                                cv::CALIB_USE_INTRINSIC_GUESS, verbose);
+        std::cout << " * Mono RMS after outlier removal — Left: " << rms_l
+                  << " px, Right: " << rms_r << " px" << std::endl;
       } else {
         std::cout << " * Not enough frames left after outlier removal ("
                   << clean_obj.size() << "/" << MIN_IMAGE
@@ -228,6 +226,15 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
       }
     }
   }
+
+  std::cout << "Stereo calibration... " << std::flush;
+
+  auto err = calib_data.stereo_calibrate(
+      obj_clean, pts_l_clean, pts_r_clean, imageSize,
+      cv::CALIB_USE_INTRINSIC_GUESS,
+      verbose);
+
+  std::cout << "Done." << std::endl;
 
   std::cout << std::endl << "*** Calibration Report ***" << std::endl;
 
