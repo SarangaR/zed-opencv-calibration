@@ -137,23 +137,27 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
         << std::endl;
   }
 
-  std::cout << "Left camera calibration... " << std::flush;
+  std::cout << std::endl << " *** Monocular cameras calibration *** " << std::endl;
+
+  std::cout << " * Left camera calibration... " << std::flush;
   auto rms_l = calib_data.left.mono_calibrate(object_points, pts_l, imageSize,
                                               flags, verbose);
   std::cout << "Done." << std::endl;
 
-  std::cout << "Right camera calibration... " << std::flush;
+  std::cout << " * Right camera calibration... " << std::flush;
   auto rms_r = calib_data.right.mono_calibrate(object_points, pts_r, imageSize,
                                                flags, verbose);
   std::cout << "Done." << std::endl;
 
   // Per-frame outlier rejection based on per-camera reprojection error
   // (RadTan model only; fisheye solvePnP is unsupported)
+  
   auto obj_clean = object_points;
   auto pts_l_clean = pts_l;
   auto pts_r_clean = pts_r;
 
   if (calib_data.left.disto_model_RadTan && calib_data.right.disto_model_RadTan) {
+    std::cout << " * Per-frame outlier rejection" << std::endl;
     std::vector<std::pair<double, int>> frame_errors;
     frame_errors.reserve(pts_l.size());
 
@@ -227,7 +231,9 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
     }
   }
 
-  std::cout << "Stereo calibration... " << std::flush;
+  std::cout << std::endl << " *** Stereo calibration *** " << std::endl;
+
+  std::cout << " * Calibration... " << std::flush;
 
   auto err = calib_data.stereo_calibrate(
       obj_clean, pts_l_clean, pts_r_clean, imageSize,
@@ -235,6 +241,86 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
       verbose);
 
   std::cout << "Done." << std::endl;
+
+  // Per-frame stereo outlier rejection using stereo R/T
+  // (RadTan model only; fisheye solvePnP is unsupported)
+  if (calib_data.left.disto_model_RadTan && calib_data.right.disto_model_RadTan) {
+    std::cout << " * Per-frame outlier rejection" << std::endl;
+    std::vector<std::pair<double, int>> frame_errors;
+    frame_errors.reserve(obj_clean.size());
+
+    for (int i = 0; i < (int)obj_clean.size(); i++) {
+      cv::Mat rvec, tvec;
+      if (!cv::solvePnP(obj_clean[i], pts_l_clean[i],
+                        calib_data.left.K, calib_data.left.D, rvec, tvec))
+        continue;
+
+      std::vector<cv::Point2f> proj_l, proj_r;
+      cv::projectPoints(obj_clean[i], rvec, tvec,
+                        calib_data.left.K, calib_data.left.D, proj_l);
+
+      cv::Mat R_l, R_r, t_r, rvec_r;
+      cv::Rodrigues(rvec, R_l);
+      R_r = calib_data.R * R_l;
+      t_r = calib_data.R * tvec + calib_data.T;
+      cv::Rodrigues(R_r, rvec_r);
+      cv::projectPoints(obj_clean[i], rvec_r, t_r,
+                        calib_data.right.K, calib_data.right.D, proj_r);
+
+      const int n = (int)pts_l_clean[i].size();
+      double err_sq = 0.0;
+      for (int j = 0; j < n; j++) {
+        double dx_l = proj_l[j].x - pts_l_clean[i][j].x;
+        double dy_l = proj_l[j].y - pts_l_clean[i][j].y;
+        double dx_r = proj_r[j].x - pts_r_clean[i][j].x;
+        double dy_r = proj_r[j].y - pts_r_clean[i][j].y;
+        err_sq += dx_l*dx_l + dy_l*dy_l + dx_r*dx_r + dy_r*dy_r;
+      }
+      frame_errors.emplace_back(std::sqrt(err_sq / (2 * n)), i);
+    }
+
+    auto sorted = frame_errors;
+    std::sort(sorted.begin(), sorted.end());
+    const double median_err = sorted[sorted.size() / 2].first;
+    const double threshold = std::max(2.5 * median_err, max_repr_error);
+
+    std::vector<std::vector<cv::Point3f>> clean_obj2;
+    std::vector<std::vector<cv::Point2f>> clean_l2, clean_r2;
+    int n_removed = 0;
+
+    for (auto& [fe, idx] : frame_errors) {
+      if (fe <= threshold) {
+        clean_obj2.push_back(obj_clean[idx]);
+        clean_l2.push_back(pts_l_clean[idx]);
+        clean_r2.push_back(pts_r_clean[idx]);
+      } else {
+        std::cout << "\n  * Removing stereo outlier frame #" << idx
+                  << " (stereo RMS=" << std::fixed << std::setprecision(2)
+                  << fe << " px, threshold=" << threshold << " px)";
+        n_removed++;
+      }
+    }
+
+    if (n_removed > 0) {
+      std::cout << "\n * Re-running calibration after removing "
+                << n_removed << " stereo outlier frame(s)" << std::endl;
+      if ((int)clean_obj2.size() >= MIN_IMAGE) {
+        rms_l = calib_data.left.mono_calibrate(clean_obj2, clean_l2, imageSize,
+                                               cv::CALIB_USE_INTRINSIC_GUESS, verbose);
+        rms_r = calib_data.right.mono_calibrate(clean_obj2, clean_r2, imageSize,
+                                                cv::CALIB_USE_INTRINSIC_GUESS, verbose);
+        err = calib_data.stereo_calibrate(clean_obj2, clean_l2, clean_r2, imageSize,
+                                          cv::CALIB_USE_INTRINSIC_GUESS, verbose);
+        std::cout << " * RMS after stereo outlier removal — Left: " << rms_l
+                  << " px, Right: " << rms_r << " px, Stereo: " << err << " px"
+                  << std::endl;
+      } else {
+        std::cout << " * Not enough frames left after stereo outlier removal ("
+                  << clean_obj2.size() << "/" << MIN_IMAGE
+                  << "). Keeping previous calibration." << std::endl;
+      }
+    }
+  }
 
   std::cout << std::endl << "*** Calibration Report ***" << std::endl;
 
