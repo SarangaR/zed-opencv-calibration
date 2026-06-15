@@ -9,3 +9,4 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_subdirectory(stereo_calibration)
 add_subdirectory(stereo_reprojection_viewer)
+add_subdirectory(monocular_calibration)
