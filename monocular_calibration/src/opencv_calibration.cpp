@@ -116,9 +116,9 @@ std::string CameraCalib::saveCalibZED(int serial, bool is_4k) {
 }
 
 int calibrate(int img_count, const std::string& folder, CameraCalib& calib_data,
-              int h_edges, int v_edges, double square_size, int serial,
-              bool is_4k, bool use_intrinsic_prior, double max_repr_error,
-              bool verbose) {
+              const BoardConfig& board, int serial, bool is_4k,
+              bool use_intrinsic_prior, double max_repr_error, bool verbose) {
+  BoardDetector detector(board);
   std::vector<cv::Mat> images;
   cv::Size imageSize(0, 0);
 
@@ -155,30 +155,22 @@ int calibrate(int img_count, const std::string& folder, CameraCalib& calib_data,
   std::cout << std::endl
             << " * " << images.size() << " samples collected" << std::endl;
 
-  std::vector<cv::Point3f> pattern_points;
-  for (int i = 0; i < v_edges; i++)
-    for (int j = 0; j < h_edges; j++)
-      pattern_points.push_back(cv::Point3f(static_cast<float>(square_size * j),
-                                           static_cast<float>(square_size * i), 0));
-
   std::vector<std::vector<cv::Point3f>> object_points;
   std::vector<std::vector<cv::Point2f>> image_points;
-  cv::Size t_size(h_edges, v_edges);
 
-  std::cout << "Detecting target corners on images" << std::endl;
+  std::cout << "Detecting target corners on images ("
+            << (detector.isCharuco() ? "ChArUco" : "chessboard") << ")"
+            << std::endl;
 
   for (int i = 0; i < (int)images.size(); i++) {
     std::cout << "." << std::flush;
-    std::vector<cv::Point2f> pts;
-    bool found = cv::findChessboardCorners(images[i], t_size, pts, 3);
-    if (found) {
-      // For HD (1920×1200): cv::Size(11, 11); for 4K (3840×2160): cv::Size(15, 15)
-      int win = (imageSize.width >= 3000) ? 15 : 11;
-      cv::cornerSubPix(images[i], pts, cv::Size(win, win), cv::Size(-1, -1),
-                       cv::TermCriteria(cv::TermCriteria::EPS | cv::TermCriteria::MAX_ITER,
-                                        30, 0.001));
-      image_points.push_back(pts);
-      object_points.push_back(pattern_points);
+    // Full-resolution detection: builds matching object/image points per frame
+    // (a ChArUco frame may hold only a partial, id-tagged corner subset).
+    BoardDetection det = detector.detect(images[i]);
+    if (det.found &&
+        (int)det.imagePoints.size() >= detector.minValidCorners()) {
+      image_points.push_back(det.imagePoints);
+      object_points.push_back(det.objectPoints);
     } else {
       std::cout << std::endl
                 << "- No valid target on frame #" << i << " -" << std::endl;
@@ -198,8 +190,20 @@ int calibrate(int img_count, const std::string& folder, CameraCalib& calib_data,
   auto flags = use_intrinsic_prior ? cv::CALIB_USE_INTRINSIC_GUESS : 0;
 
   std::cout << "Camera calibration... " << std::flush;
-  double rms = calib_data.mono_calibrate(object_points, image_points, imageSize,
-                                         flags, verbose);
+  double rms = -1.0;
+  try {
+    rms = calib_data.mono_calibrate(object_points, image_points, imageSize,
+                                    flags, verbose);
+  } catch (const cv::Exception& e) {
+    // The fisheye solver (CALIB_CHECK_COND-style conditioning) throws on
+    // ill-conditioned data such as sparse partial ChArUco views.
+    std::cerr << std::endl
+              << " !!! Calibration solver failed: " << e.what() << std::endl
+              << " Collect more (and better-spread) views of the board, or "
+                 "use the Radial-Tangential model instead of --fisheye."
+              << std::endl;
+    return EXIT_FAILURE;
+  }
   calib_data.imageSize = imageSize;
   std::cout << "Done." << std::endl;
 
@@ -210,9 +214,15 @@ int calibrate(int img_count, const std::string& folder, CameraCalib& calib_data,
 
     for (int i = 0; i < (int)image_points.size(); i++) {
       cv::Mat rvec, tvec;
-      if (!cv::solvePnP(object_points[i], image_points[i],
-                        calib_data.K, calib_data.D, rvec, tvec))
+      // solvePnP can throw (not just return false) on degenerate point sets
+      // such as near-collinear partial ChArUco views — skip those frames.
+      try {
+        if (!cv::solvePnP(object_points[i], image_points[i],
+                          calib_data.K, calib_data.D, rvec, tvec))
+          continue;
+      } catch (const cv::Exception&) {
         continue;
+      }
       std::vector<cv::Point2f> proj;
       cv::projectPoints(object_points[i], rvec, tvec,
                         calib_data.K, calib_data.D, proj);
@@ -228,7 +238,9 @@ int calibrate(int img_count, const std::string& folder, CameraCalib& calib_data,
 
     auto sorted = frame_errors;
     std::sort(sorted.begin(), sorted.end());
-    const double median_err = sorted[sorted.size() / 2].first;
+    // Guard against an all-solvePnP-failed frame set (empty -> no rejection).
+    const double median_err =
+        sorted.empty() ? 0.0 : sorted[sorted.size() / 2].first;
     const double threshold = std::max(2.5 * median_err, max_repr_error);
 
     std::vector<std::vector<cv::Point3f>> clean_obj;

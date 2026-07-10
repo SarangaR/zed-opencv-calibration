@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <sstream>
 
+#include "board_detector.hpp"
 #include "calibration_checker.hpp"
 #include "opencv_calibration.hpp"
 
@@ -14,7 +15,16 @@ namespace fs = std::filesystem;
 
 int h_edges = 9;           // number of horizontal inner edges
 int v_edges = 6;           // number of vertical inner edges
-float square_size = 25.4;  // mm
+float square_size = 25.4;  // mm (chessboard default; ChArUco defaults to 15)
+bool square_size_set = false;  // true when --square_size was passed explicitly
+
+// ChArUco board (enabled with --charuco). Defaults match the AndyMark board.
+bool use_charuco = false;
+int squares_x = 15;                    // number of squares along X
+int squares_y = 11;                    // number of squares along Y
+float marker_size = 11.0f;             // ArUco marker size in mm
+std::string dict_name = "DICT_4X4_250";  // ArUco dictionary
+bool charuco_legacy = false;           // pre-4.7 ChArUco board layout
 
 // Default parameters are good for this checkerboard:
 // https://github.com/opencv/opencv/blob/4.x/doc/pattern.png/
@@ -74,6 +84,8 @@ struct Args {
   int camera_id = -1;
   int camera_sn = -1;
   bool use_stored_images = false;
+  bool use_webcam = false;         // test mode: plain cv::VideoCapture input
+  std::string webcam_source = "0"; // device id ("0") or video file path/URL
 
   void parse(int argc, char* argv[]) {
     app_name = argv[0];
@@ -81,6 +93,9 @@ struct Args {
       std::string arg = argv[i];
       if (arg == "--svo" && i + 1 < argc) {
         svo_path = argv[++i];
+      } else if (arg == "--webcam" && i + 1 < argc) {
+        use_webcam = true;
+        webcam_source = argv[++i];
       } else if (arg == "--fisheye") {
         is_radtan_lens = false;
       } else if (arg == "--id" && i + 1 < argc) {
@@ -93,6 +108,19 @@ struct Args {
         v_edges = std::stoi(argv[++i]);
       } else if (arg == "--square_size" && i + 1 < argc) {
         square_size = std::stof(argv[++i]);
+        square_size_set = true;
+      } else if (arg == "--charuco") {
+        use_charuco = true;
+      } else if (arg == "--squares_x" && i + 1 < argc) {
+        squares_x = std::stoi(argv[++i]);
+      } else if (arg == "--squares_y" && i + 1 < argc) {
+        squares_y = std::stoi(argv[++i]);
+      } else if (arg == "--marker_size" && i + 1 < argc) {
+        marker_size = std::stof(argv[++i]);
+      } else if (arg == "--dict" && i + 1 < argc) {
+        dict_name = argv[++i];
+      } else if (arg == "--charuco_legacy") {
+        charuco_legacy = true;
       } else if (arg == "--use_stored_values") {
         use_stored_images = true;
       } else if (arg == "--help" || arg == "-h") {
@@ -103,10 +131,31 @@ struct Args {
         std::cout << "  --v_edges <value>      Number of vertical inner edges "
                      "of the checkerboard"
                   << std::endl;
-        std::cout << "  --square_size <value>  Size of a square in the "
-                     "checkerboard (in mm)"
+        std::cout << "  --square_size <value>  Size of a square in mm "
+                     "(default 25.4 chessboard / 15 ChArUco)"
+                  << std::endl;
+        std::cout << "  --charuco              Use a ChArUco board instead of a "
+                     "plain chessboard"
+                  << std::endl;
+        std::cout << "  --squares_x <value>    ChArUco: number of squares "
+                     "along X (default 15)"
+                  << std::endl;
+        std::cout << "  --squares_y <value>    ChArUco: number of squares "
+                     "along Y (default 11)"
+                  << std::endl;
+        std::cout << "  --marker_size <value>  ChArUco: ArUco marker size in "
+                     "mm (default 11)"
+                  << std::endl;
+        std::cout << "  --dict <name>          ChArUco: ArUco dictionary "
+                     "(default DICT_4X4_250)"
+                  << std::endl;
+        std::cout << "  --charuco_legacy       ChArUco: board uses the pre-4.7 "
+                     "(legacy) layout"
                   << std::endl;
         std::cout << "  --svo <file>           Path to the SVO file."
+                  << std::endl;
+        std::cout << "  --webcam <id|path>     Test mode: use a plain webcam "
+                     "(device id) or a video file instead of a ZED."
                   << std::endl;
         std::cout << "  --fisheye              Use fisheye lens model."
                   << std::endl;
@@ -133,6 +182,13 @@ struct Args {
         std::cout << "  " << argv[0]
                   << " --fisheye --h_edges 12 --v_edges 9 --square_size 30.0"
                   << std::endl;
+        std::cout << std::endl
+                  << "* ZED X One with a ChArUco board (AndyMark defaults):"
+                  << std::endl;
+        std::cout << "  " << argv[0]
+                  << " --charuco --squares_x 15 --squares_y 11 "
+                     "--square_size 15 --marker_size 11 --dict DICT_4X4_250"
+                  << std::endl;
         std::cout << std::endl;
         exit(0);
       }
@@ -150,23 +206,57 @@ int main(int argc, char* argv[]) {
   Args args;
   args.parse(argc, argv);
 
+  // The 25.4 mm square default is a chessboard value; the ChArUco defaults
+  // match the AndyMark board (15 mm squares). Using 25.4 with ChArUco would
+  // silently scale all metric outputs by 25.4/15.
+  if (use_charuco && !square_size_set) square_size = 15.0f;
+
+  // Board configuration (chessboard by default, ChArUco with --charuco).
+  BoardConfig board_cfg;
+  board_cfg.type = use_charuco ? PatternType::Charuco : PatternType::Chessboard;
+  board_cfg.h_edges = h_edges;
+  board_cfg.v_edges = v_edges;
+  board_cfg.squares_x = squares_x;
+  board_cfg.squares_y = squares_y;
+  board_cfg.square_size = square_size;
+  board_cfg.marker_size = marker_size;
+  board_cfg.dict_name = dict_name;
+  board_cfg.charuco_legacy = charuco_legacy;
+
+  BoardDetector detector(board_cfg);
+
   std::cout << "*** Monocular Camera Calibration Tool (ZED X One) ***" << std::endl;
   std::cout << std::endl;
-  std::cout << "The calibration process requires a checkerboard of known "
-               "characteristics."
-            << std::endl;
-  std::cout << " * Expected checkerboard features:" << std::endl;
-  std::cout << "   - Inner horizontal edges:\t" << h_edges << std::endl;
-  std::cout << "   - Inner vertical edges:\t" << v_edges << std::endl;
-  std::cout << "   - Square size:\t\t" << square_size << " mm" << std::endl;
+  if (use_charuco) {
+    std::cout << "The calibration process requires a ChArUco board of known "
+                 "characteristics."
+              << std::endl;
+    std::cout << " * Expected ChArUco board features:" << std::endl;
+    std::cout << "   - Squares (X x Y):\t\t" << squares_x << " x " << squares_y
+              << std::endl;
+    std::cout << "   - Square size:\t\t" << square_size << " mm" << std::endl;
+    std::cout << "   - Marker size:\t\t" << marker_size << " mm" << std::endl;
+    std::cout << "   - ArUco dictionary:\t\t" << dict_name << std::endl;
+  } else {
+    std::cout << "The calibration process requires a checkerboard of known "
+                 "characteristics."
+              << std::endl;
+    std::cout << " * Expected checkerboard features:" << std::endl;
+    std::cout << "   - Inner horizontal edges:\t" << h_edges << std::endl;
+    std::cout << "   - Inner vertical edges:\t" << v_edges << std::endl;
+    std::cout << "   - Square size:\t\t" << square_size << " mm" << std::endl;
+  }
   std::cout << "Change these parameters using the command line options if "
                "needed. Use the '-h' option for help."
             << std::endl;
   std::cout << std::endl;
 
-  CalibrationChecker checker(cv::Size(h_edges, v_edges), square_size,
-                             min_samples, max_samples, min_target_area,
-                             idealParams, verbose);
+  // The checker works on the grid of chessboard corners: (h_edges, v_edges) for
+  // a chessboard, (squares_x-1, squares_y-1) for a ChArUco board.
+  CalibrationChecker checker(
+      cv::Size(detector.cornersX(), detector.cornersY()), square_size,
+      min_samples, max_samples, min_target_area, idealParams, verbose,
+      use_charuco);
 
   CameraCalib calib;
   calib.initDefault(args.is_radtan_lens);
@@ -176,7 +266,7 @@ int main(int argc, char* argv[]) {
 
   int image_count = -1;
   bool can_use_calib_prior = false;
-  sl::CameraOneInformation zed_info;
+  int serial_number = 0;  // 0 in webcam test mode
 
   if (!args.use_stored_images) {
     float size_score = 0.0f, skew_score = 0.0f, pos_score_x = 0.0f,
@@ -184,56 +274,100 @@ int main(int argc, char* argv[]) {
           max_by = 0.0f, min_size = 0.0f, max_size = 0.0f, min_skew = 0.0f,
           max_skew = 0.0f;
 
+    // Frame source: either a ZED X One (default) or, in test mode (--webcam),
+    // a plain cv::VideoCapture device / video file.
+    cv::VideoCapture cap;
+    cv::Size cam_size;
+    cv::Mat rgb;  // current full-resolution BGR frame
+#ifndef WEBCAM_ONLY
     sl::CameraOne zed_cam;
-    sl::InitParametersOne init_params;
-    init_params.camera_resolution = sl::RESOLUTION::AUTO;
-    init_params.camera_fps = 15;
-    init_params.sdk_verbose = sdk_verbose;
+    sl::Mat zed_image;
+#endif
 
-    if (!args.svo_path.empty()) {
-      init_params.input.setFromSVOFile(args.svo_path.c_str());
-      std::cout << " * Using SVO file: " << args.svo_path << std::endl;
-    } else if (args.camera_sn != -1) {
-      init_params.input.setFromSerialNumber(args.camera_sn);
-      std::cout << " * Using camera serial number: " << args.camera_sn << std::endl;
-    } else if (args.camera_id != -1) {
-      init_params.input.setFromCameraID(args.camera_id);
-      std::cout << " * Using camera ID: " << args.camera_id << std::endl;
-    }
-
-    auto status = zed_cam.open(init_params);
-
-    if (status > sl::ERROR_CODE::SUCCESS &&
-        status != sl::ERROR_CODE::INVALID_CALIBRATION_FILE) {
-      std::cerr << "Error opening ZED X One camera: " << sl::toString(status)
+    if (args.use_webcam) {
+      const bool is_id =
+          !args.webcam_source.empty() &&
+          args.webcam_source.find_first_not_of("0123456789") ==
+              std::string::npos;
+      const bool opened = is_id ? cap.open(std::stoi(args.webcam_source))
+                                : cap.open(args.webcam_source);
+      if (!opened || !cap.isOpened()) {
+        std::cerr << "Error opening webcam source '" << args.webcam_source
+                  << "'." << std::endl;
+        return EXIT_FAILURE;
+      }
+      if (!cap.read(rgb) || rgb.empty()) {
+        std::cerr << "Webcam source '" << args.webcam_source
+                  << "' produced no frame." << std::endl;
+        return EXIT_FAILURE;
+      }
+      cam_size = rgb.size();
+      std::cout << " * Webcam test mode. Source: " << args.webcam_source
+                << " (" << cam_size.width << " x " << cam_size.height << ")"
+                << std::endl;
+      std::cout << " * Output serial number: 0 (mono_calibration_SN0.yml)"
+                << std::endl;
+    } else {
+#ifdef WEBCAM_ONLY
+      std::cerr << "This binary was built without the ZED SDK (WEBCAM_ONLY). "
+                   "Use --webcam <id-or-path>."
                 << std::endl;
       return EXIT_FAILURE;
+#else
+      sl::InitParametersOne init_params;
+      init_params.camera_resolution = sl::RESOLUTION::AUTO;
+      init_params.camera_fps = 15;
+      init_params.sdk_verbose = sdk_verbose;
+
+      if (!args.svo_path.empty()) {
+        init_params.input.setFromSVOFile(args.svo_path.c_str());
+        std::cout << " * Using SVO file: " << args.svo_path << std::endl;
+      } else if (args.camera_sn != -1) {
+        init_params.input.setFromSerialNumber(args.camera_sn);
+        std::cout << " * Using camera serial number: " << args.camera_sn << std::endl;
+      } else if (args.camera_id != -1) {
+        init_params.input.setFromCameraID(args.camera_id);
+        std::cout << " * Using camera ID: " << args.camera_id << std::endl;
+      }
+
+      auto status = zed_cam.open(init_params);
+
+      if (status > sl::ERROR_CODE::SUCCESS &&
+          status != sl::ERROR_CODE::INVALID_CALIBRATION_FILE) {
+        std::cerr << "Error opening ZED X One camera: " << sl::toString(status)
+                  << std::endl;
+        return EXIT_FAILURE;
+      }
+
+      sl::CameraOneInformation zed_info = zed_cam.getCameraInformation();
+      serial_number = zed_info.serial_number;
+
+      std::cout << " * Camera Model: " << sl::toString(zed_info.camera_model)
+                << std::endl;
+      std::cout << " * Camera Serial Number: " << zed_info.serial_number
+                << std::endl;
+      std::cout << " * Camera Resolution: "
+                << zed_info.camera_configuration.resolution.width << " x "
+                << zed_info.camera_configuration.resolution.height << std::endl;
+
+      is_4k_camera = (zed_info.camera_model == sl::MODEL::ZED_XONE_UHD);
+
+      can_use_calib_prior = (status != sl::ERROR_CODE::INVALID_CALIBRATION_FILE);
+      std::cout << " * Using prior calibration: "
+                << (can_use_calib_prior ? "Yes" : "No") << std::endl;
+
+      if (can_use_calib_prior)
+        calib.setFrom(zed_info.camera_configuration.calibration_parameters_raw);
+
+      sl::Resolution camera_resolution = zed_info.camera_configuration.resolution;
+      cam_size = cv::Size(static_cast<int>(camera_resolution.width),
+                          static_cast<int>(camera_resolution.height));
+
+      zed_image.alloc(camera_resolution, sl::MAT_TYPE::U8_C3, sl::MEM::CPU);
+      rgb = cv::Mat(cam_size.height, cam_size.width, CV_8UC3,
+                    zed_image.getPtr<sl::uchar1>());
+#endif
     }
-
-    zed_info = zed_cam.getCameraInformation();
-
-    std::cout << " * Camera Model: " << sl::toString(zed_info.camera_model)
-              << std::endl;
-    std::cout << " * Camera Serial Number: " << zed_info.serial_number
-              << std::endl;
-    std::cout << " * Camera Resolution: "
-              << zed_info.camera_configuration.resolution.width << " x "
-              << zed_info.camera_configuration.resolution.height << std::endl;
-
-    is_4k_camera = (zed_info.camera_model == sl::MODEL::ZED_XONE_UHD);
-
-    can_use_calib_prior = (status != sl::ERROR_CODE::INVALID_CALIBRATION_FILE);
-    std::cout << " * Using prior calibration: "
-              << (can_use_calib_prior ? "Yes" : "No") << std::endl;
-
-    if (can_use_calib_prior)
-      calib.setFrom(zed_info.camera_configuration.calibration_parameters_raw);
-
-    sl::Resolution camera_resolution = zed_info.camera_configuration.resolution;
-
-    sl::Mat zed_image(camera_resolution, sl::MAT_TYPE::U8_C3, sl::MEM::CPU);
-    auto rgb = cv::Mat(camera_resolution.height, camera_resolution.width,
-                       CV_8UC3, zed_image.getPtr<sl::uchar1>());
 
     cv::Mat coverage_indicator =
         cv::Mat::zeros(display_size.height, display_size.width, CV_8UC1);
@@ -282,16 +416,36 @@ int main(int argc, char* argv[]) {
     while (1) {
       if (key == 'q' || key == 'Q' || key == 27) {
         std::cout << "Calibration aborted by user." << std::endl;
-        zed_cam.close();
+#ifndef WEBCAM_ONLY
+        if (!args.use_webcam) zed_cam.close();
+#endif
         return EXIT_SUCCESS;
       }
 
       const cv::Scalar info_color = cv::Scalar(50, 210, 50);
       const cv::Scalar warn_color = cv::Scalar(0, 50, 250);
 
-      if (zed_cam.grab() == sl::ERROR_CODE::SUCCESS) {
-        zed_cam.retrieveImage(zed_image, sl::VIEW::LEFT_UNRECTIFIED_BGR);
+      // Grab the next full-resolution frame from the active source.
+      bool frame_ok = false;
+      if (args.use_webcam) {
+        frame_ok = cap.read(rgb) && !rgb.empty();
+        if (!frame_ok) {
+          // Video file ended or the device died — stop acquiring; calibration
+          // proceeds below with whatever samples were collected.
+          std::cout << "Webcam source ended after " << std::max(image_count, 0)
+                    << " accepted sample(s)." << std::endl;
+          break;
+        }
+      }
+#ifndef WEBCAM_ONLY
+      else {
+        frame_ok = (zed_cam.grab() == sl::ERROR_CODE::SUCCESS);
+        if (frame_ok)
+          zed_cam.retrieveImage(zed_image, sl::VIEW::LEFT_UNRECTIFIED_BGR);
+      }
+#endif
 
+      if (frame_ok) {
         cv::resize(rgb, rgb_d, display_size);
         cv::resize(rgb, rgb_d_fill, display_size);
 
@@ -299,12 +453,51 @@ int main(int argc, char* argv[]) {
                                       limits_indicator);
         applyPosIndicatorOverlay(rgb_d_fill, pos_indicator);
 
+        // Detection. ChArUco marker detection is scale-sensitive, so it runs on
+        // the full-resolution frame; the classic chessboard keeps its faster
+        // downscaled detection. `pts`/`ids` are full-resolution corners.
         std::vector<cv::Point2f> pts;
-        bool found = cv::findChessboardCorners(rgb_d, cv::Size(h_edges, v_edges), pts);
-        drawChessboardCorners(rgb_d_fill, cv::Size(h_edges, v_edges),
-                              cv::Mat(pts), found);
+        std::vector<int> ids;
+        bool found = false;
+        if (use_charuco) {
+          BoardDetection det = detector.detect(rgb);
+          found = det.found;
+          pts = det.imagePoints;   // full-res
+          ids = det.ids;
+          // Draw a downscaled copy on the display image.
+          std::vector<cv::Point2f> pts_disp = pts;
+          scaleKP(pts_disp, cam_size, display_size);
+          BoardDetection det_disp = det;
+          det_disp.imagePoints = pts_disp;
+          detector.draw(rgb_d_fill, det_disp);
+        } else {
+          found = cv::findChessboardCorners(rgb_d, cv::Size(h_edges, v_edges),
+                                            pts);  // display-res
+          drawChessboardCorners(rgb_d_fill, cv::Size(h_edges, v_edges),
+                                cv::Mat(pts), found);
+        }
 
         display = rgb_d_fill;
+
+        // ---- ChArUco live tuning HUD: detected corners vs the full grid.
+        // Use it to tune distance / lighting / --dict / board params: aim to
+        // maximize the count (full board is squares_x-1 x squares_y-1 corners).
+        if (use_charuco) {
+          const int total = detector.cornersX() * detector.cornersY();
+          const int n = static_cast<int>(ids.size());
+          const cv::Scalar hud_color =
+              (n >= detector.minValidCorners()) ? info_color : warn_color;
+          std::stringstream ss_ch;
+          ss_ch << "ChArUco: " << n << "/" << total << " corners";
+          cv::putText(display, ss_ch.str(), cv::Point(10, 24),
+                      cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 0, 0), 4);
+          cv::putText(display, ss_ch.str(), cv::Point(10, 24),
+                      cv::FONT_HERSHEY_SIMPLEX, 0.6, hud_color, 2);
+          if (n < detector.minValidCorners())
+            cv::putText(display, "Move closer / improve lighting",
+                        cv::Point(10, 48), cv::FONT_HERSHEY_SIMPLEX, 0.5,
+                        warn_color, 2);
+        }
 
         cv::Mat text_info = cv::Mat::ones(
             cv::Size(text_area_width, display.size[0]), display.type());
@@ -400,28 +593,26 @@ int main(int argc, char* argv[]) {
           v_pos += v_space;
           draw_text_row(
               "X [px]", v_pos,
-              static_cast<int>(min_bx * camera_resolution.width),
-              static_cast<int>(max_bx * camera_resolution.width),
-              static_cast<int>(min_b_x_coverage * camera_resolution.width),
+              static_cast<int>(min_bx * cam_size.width),
+              static_cast<int>(max_bx * cam_size.width),
+              static_cast<int>(min_b_x_coverage * cam_size.width),
               pos_score_x);
 
           v_pos += v_space;
           draw_text_row(
               "Y [px]", v_pos,
-              static_cast<int>(min_by * camera_resolution.height),
-              static_cast<int>(max_by * camera_resolution.height),
-              static_cast<int>(min_b_y_coverage * camera_resolution.height),
+              static_cast<int>(min_by * cam_size.height),
+              static_cast<int>(max_by * cam_size.height),
+              static_cast<int>(min_b_y_coverage * cam_size.height),
               pos_score_y);
 
           v_pos += v_space;
           draw_text_row(
               "Size [sq.px]", v_pos,
-              static_cast<int>(min_size * camera_resolution.height *
-                               camera_resolution.width),
-              static_cast<int>(max_size * camera_resolution.height *
-                               camera_resolution.width),
-              static_cast<int>(min_area_range * camera_resolution.height *
-                               camera_resolution.width),
+              static_cast<int>(min_size * cam_size.height * cam_size.width),
+              static_cast<int>(max_size * cam_size.height * cam_size.width),
+              static_cast<int>(min_area_range * cam_size.height *
+                               cam_size.width),
               size_score);
 
           v_pos += v_space;
@@ -484,9 +675,16 @@ int main(int argc, char* argv[]) {
           blurry_image = false;
 
           if (found) {
-            auto scaled_pts = pts;
-            scaleKP(pts, display_size,
-                    cv::Size(camera_resolution.width, camera_resolution.height));
+            // `pts` is display-res for a chessboard, full-res for ChArUco.
+            // Build a full-res set (for testSample) and a display-res set (for
+            // the coverage polygon overlay).
+            std::vector<cv::Point2f> full_pts = pts;
+            std::vector<cv::Point2f> disp_pts = pts;
+            if (use_charuco) {
+              scaleKP(disp_pts, cam_size, display_size);
+            } else {
+              scaleKP(full_pts, display_size, cam_size);
+            }
 
             double sharpness = computeSharpness(rgb);
             blurry_image = sharpness < min_sharpness;
@@ -495,10 +693,7 @@ int main(int argc, char* argv[]) {
                         << std::setprecision(1) << sharpness
                         << ", min=" << min_sharpness
                         << "). Hold still and retry." << std::endl;
-            } else if (checker.testSample(
-                           pts,
-                           cv::Size(camera_resolution.width,
-                                    camera_resolution.height))) {
+            } else if (checker.testSample(full_pts, cam_size, ids)) {
               low_target_variability = false;
 
               if (image_count < 0) image_count = 0;
@@ -525,7 +720,17 @@ int main(int argc, char* argv[]) {
                                          limits_indicator, norm_x, norm_y,
                                          norm_size, min_bx, max_bx, min_by,
                                          max_by, (image_count >= 2));
-              addNewCheckerboardPoly(coverage_indicator, scaled_pts);
+              // 4 outside corners (TL,TR,BR,BL) in display coordinates.
+              std::vector<cv::Point2f> poly;
+              if (use_charuco) {
+                poly = detector.extremeCorners(disp_pts, ids);
+              } else {
+                poly = {disp_pts[0], disp_pts[h_edges - 1],
+                        disp_pts[disp_pts.size() - 1],
+                        disp_pts[disp_pts.size() - h_edges]};
+              }
+              if (poly.size() == 4)
+                addNewCheckerboardPoly(coverage_indicator, poly);
             } else {
               std::cout << "  ! Checkerboard detected, but sample not valid. "
                            "Please try again with a new position/orientation."
@@ -540,12 +745,19 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    zed_cam.close();
+    if (args.use_webcam) {
+      cap.release();
+    }
+#ifndef WEBCAM_ONLY
+    else {
+      zed_cam.close();
+    }
+#endif
   }
 
-  int err = calibrate(image_count, image_folder, calib, h_edges, v_edges,
-                      square_size, zed_info.serial_number, is_4k_camera,
-                      can_use_calib_prior, max_repr_error, verbose);
+  int err = calibrate(image_count, image_folder, calib, board_cfg,
+                      serial_number, is_4k_camera, can_use_calib_prior,
+                      max_repr_error, verbose);
 
   if (err == EXIT_SUCCESS)
     std::cout << std::endl
@@ -644,12 +856,13 @@ void addNewCheckerboardPosition(cv::Mat& coverage_indicator,
   }
 }
 
+// `pts` holds the 4 outside corners in TL, TR, BR, BL order (display coords).
 void addNewCheckerboardPoly(cv::Mat& coverage_indicator,
                             const std::vector<cv::Point2f>& pts) {
   cv::Point tl = pts[0];
-  cv::Point tr = pts[h_edges - 1];
-  cv::Point br = pts[pts.size() - 1];
-  cv::Point bl = pts[pts.size() - h_edges];
+  cv::Point tr = pts[1];
+  cv::Point br = pts[2];
+  cv::Point bl = pts[3];
 
   std::vector<cv::Point> poly_pts = {tl, tr, br, bl};
   cv::Mat mask = cv::Mat::zeros(coverage_indicator.size(), CV_8UC1);

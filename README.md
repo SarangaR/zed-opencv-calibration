@@ -12,12 +12,62 @@ This project provides five main applications for working with ZED cameras:
 4. **Stereo Calibration Checker** - Live reprojection error monitor to validate stereo calibration quality.
 5. **Stereo Reprojection Viewer** - Real-time reprojection tool to visualize calibration results on unrectified images.
 
+## Calibration target: chessboard or ChArUco
+
+By default the tools detect a classic **chessboard**. Passing `--charuco` switches to a
+**ChArUco board** (a chessboard fused with ArUco markers), supported by the four
+calibration/checker tools.
+
+**Why ChArUco is preferred for calibration:**
+
+- **Partial views are usable.** Every corner is tied to a uniquely identified ArUco
+  marker, so occluded, partially-visible, or frame-edge-cropped boards still contribute.
+  A plain chessboard is all-or-nothing — nothing is detected unless every inner corner is
+  visible, which makes it hard to cover the image edges and corners.
+- **No orientation ambiguity.** Marker IDs pin the exact board coordinates, eliminating the
+  chessboard's orientation / Z-axis flip failures.
+- **Chessboard-grade subpixel accuracy.** ChArUco corners are interpolated onto the real
+  black/white chessboard crossings, so they keep the subpixel precision that bare ArUco
+  markers lack.
+
+Because partial boards count, you can push the board fully into the image corners — exactly
+what the acquisition tool's coverage metrics reward — without losing the sample.
+
+**ChArUco options** (accepted by `zed_mono_calibration`, `zed_stereo_calibration`,
+`zed_mono_checker`, `zed_stereo_checker`):
+
+```bash
+  --charuco              Use a ChArUco board instead of a plain chessboard
+  --squares_x <value>    Number of squares along X (default 15)
+  --squares_y <value>    Number of squares along Y (default 11)
+  --square_size <value>  Square size in mm (default: 25.4 chessboard / 15 ChArUco)
+  --marker_size <value>  ArUco marker size in mm (default 11)
+  --dict <name>          ArUco dictionary, e.g. DICT_4X4_250 (default), DICT_5X5_1000, ...
+  --charuco_legacy       Board uses the pre-4.7 (legacy) ChArUco layout
+```
+
+> **OpenCV 4.7 layout change:** OpenCV 4.7 flipped the default ChArUco marker/corner
+> layout. If you build against OpenCV ≥ 4.7 but your board was generated with older
+> tooling and detection fails or looks mis-indexed, add `--charuco_legacy`. On OpenCV ≤ 4.6
+> the legacy layout is the only one and the flag has no effect.
+
+The defaults match the [AndyMark ChArUco board](https://andymark.com/products/am-calibration-board)
+(15×11 squares, `DICT_4X4_250`). **Verify the square/marker sizes and dictionary printed on
+your physical board** — an incorrect dictionary produces silent non-detection. Example:
+
+```bash
+./zed_stereo_calibration --charuco --squares_x 15 --squares_y 11 \
+    --square_size 15 --marker_size 11 --dict DICT_4X4_250
+```
+
 ## Requirements
 
 ### Dependencies
 
 - **ZED SDK** (version 5.1 or higher)
-- **OpenCV** (4.x recommended)
+- **OpenCV** (4.x recommended). ChArUco support uses the ArUco module: the core
+  `objdetect` module on OpenCV ≥ 4.7, or the `aruco` contrib module on OpenCV ≤ 4.6
+  (the code selects the correct API automatically at build time).
 - **CUDA** (compatible with ZED SDK version)
 - **OpenGL libraries**:
   - GLEW
@@ -41,6 +91,74 @@ mkdir build && cd build
 cmake ..
 make -j$(nproc)
 ```
+
+### Quick build & run helper
+
+`build_and_run.sh` builds the requested tool if it isn't built yet, then runs it.
+Any arguments after the tool name (or after a literal `--`) are passed straight through.
+
+```bash
+./build_and_run.sh <tool> [--rebuild] [-- <tool arguments...>]
+```
+
+`<tool>` is one of `mono_calib`, `mono_check`, `stereo_calib`, `stereo_check`, `viewer`.
+`--rebuild` forces a clean reconfigure + rebuild.
+
+```bash
+# Build (first time) and run monocular ChArUco calibration with defaults
+./build_and_run.sh mono_calib --charuco
+
+# Run stereo ChArUco calibration with explicit board parameters
+./build_and_run.sh stereo_calib -- --charuco --squares_x 15 --squares_y 11 \
+    --square_size 15 --marker_size 11 --dict DICT_4X4_250
+
+# Force a rebuild, then run the stereo checker against a calibration file
+./build_and_run.sh stereo_check --rebuild -- --calib_opencv zed_calibration_SN123.yml
+```
+
+When running in ChArUco mode, the live GUI shows a **detected-corner count** overlay
+(`ChArUco: N/total corners`) to help tune the board distance, lighting, and parameters —
+maximize the count, and for stereo keep the left/right counts high and similar.
+
+### Webcam test mode (no ZED SDK / no ZED camera)
+
+The two monocular tools can run against an ordinary webcam or a video file for
+pipeline testing — e.g. inside a Docker image that has OpenCV but not the ZED SDK.
+
+Two pieces:
+
+1. **`-DWEBCAM_ONLY=ON`** (CMake) builds only `zed_mono_calibration` and
+   `zed_mono_checker`, linking OpenCV alone (no ZED SDK, no CUDA). All ZED code is
+   compiled out.
+2. **`--webcam <id-or-path>`** (runtime) reads frames from `cv::VideoCapture` — a
+   device id (`0`) or a video file path. The flag also works in normal ZED builds.
+
+```bash
+# In the OpenCV-only container (repo mounted at /work):
+cmake -S /work -B /work/build-webcam -DWEBCAM_ONLY=ON
+cmake --build /work/build-webcam -j
+
+# Live webcam (Linux: pass the device through, e.g. docker run --device /dev/video0)
+./build-webcam/monocular_calibration/zed_mono_calibration --webcam 0 --charuco
+
+# Or from a pre-recorded clip (no camera needed in the container; useful on
+# Windows hosts where webcam passthrough into Docker is unreliable)
+./build-webcam/monocular_calibration/zed_mono_calibration --webcam /work/clip.mp4 --charuco
+
+# Validate the produced calibration (webcam mode requires --calib_opencv):
+./build-webcam/monocular_checker/zed_mono_checker --webcam 0 --charuco \
+    --calib_opencv mono_calibration_SN0.yml
+```
+
+Notes:
+- Webcam mode uses serial number `0` → output file `mono_calibration_SN0.yml`.
+  The ZED `.conf` writer will reject the non-ZED resolution (warning is expected);
+  the `.yml` is the test artifact.
+- When a video file ends, acquisition stops and calibration runs on the samples
+  collected so far.
+- This exercises the full ChArUco pipeline — detection, HUD, coverage gating,
+  calibration solve, outlier rejection, YAML save, reprojection check — everything
+  except ZED-specific I/O. Stereo tools stay ZED-only.
 
 ## Usage
 

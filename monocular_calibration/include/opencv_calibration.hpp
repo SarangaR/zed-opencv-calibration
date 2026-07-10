@@ -4,7 +4,11 @@
 #include <fstream>
 #include <numeric>
 #include <opencv2/opencv.hpp>
+#ifndef WEBCAM_ONLY
 #include <sl/CameraOne.hpp>
+#endif
+
+#include "board_detector.hpp"
 
 constexpr int MIN_IMAGE = 20;
 
@@ -26,6 +30,7 @@ struct CameraCalib {
     }
   }
 
+#ifndef WEBCAM_ONLY
   void setFrom(const sl::CameraParameters& cam) {
     K = cv::Mat::eye(3, 3, CV_64FC1);
     K.at<double>(0, 0) = static_cast<double>(cam.fx);
@@ -49,6 +54,7 @@ struct CameraCalib {
       for (int i = 0; i < nb_coeff; i++) D.at<double>(i) = cam.disto[i];
     }
   }
+#endif  // WEBCAM_ONLY
 
   // Note: object_points and image_points must be Point3f / Point2f.
   // Point3d / Point2d are not supported by cv::calibrateCamera.
@@ -89,6 +95,6 @@ struct CameraCalib {
 };
 
 int calibrate(int img_count, const std::string& folder, CameraCalib& calib_data,
-              int h_edges, int v_edges, double square_size, int serial,
-              bool is_4k, bool use_intrinsic_prior = false,
-              double max_repr_error = 0.5, bool verbose = false);
+              const BoardConfig& board, int serial, bool is_4k,
+              bool use_intrinsic_prior = false, double max_repr_error = 0.5,
+              bool verbose = false);

@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <sstream>
 
+#include "board_detector.hpp"
 #include "calibration_checker.hpp"
 #include "opencv_calibration.hpp"
 
@@ -14,7 +15,16 @@ namespace fs = std::filesystem;
 
 int h_edges = 9;           // number of horizontal inner edges
 int v_edges = 6;           // number of vertical inner edges
-float square_size = 25.4;  // mm
+float square_size = 25.4;  // mm (chessboard default; ChArUco defaults to 15)
+bool square_size_set = false;  // true when --square_size was passed explicitly
+
+// ChArUco board (enabled with --charuco). Defaults match the AndyMark board.
+bool use_charuco = false;
+int squares_x = 15;                    // number of squares along X
+int squares_y = 11;                    // number of squares along Y
+float marker_size = 11.0f;             // ArUco marker size in mm
+std::string dict_name = "DICT_4X4_250";  // ArUco dictionary
+bool charuco_legacy = false;           // pre-4.7 ChArUco board layout
 
 // Default parameters are good for this checkerboard:
 // https://github.com/opencv/opencv/blob/4.x/doc/pattern.png/
@@ -119,6 +129,19 @@ struct Args {
         v_edges = std::stoi(argv[++i]);
       } else if (arg == "--square_size" && i + 1 < argc) {
         square_size = std::stof(argv[++i]);
+        square_size_set = true;
+      } else if (arg == "--charuco") {
+        use_charuco = true;
+      } else if (arg == "--squares_x" && i + 1 < argc) {
+        squares_x = std::stoi(argv[++i]);
+      } else if (arg == "--squares_y" && i + 1 < argc) {
+        squares_y = std::stoi(argv[++i]);
+      } else if (arg == "--marker_size" && i + 1 < argc) {
+        marker_size = std::stof(argv[++i]);
+      } else if (arg == "--dict" && i + 1 < argc) {
+        dict_name = argv[++i];
+      } else if (arg == "--charuco_legacy") {
+        charuco_legacy = true;
       } else if (arg == "--use_stored_values") {
         use_stored_images = true;
       } else if (arg == "--help" || arg == "-h") {
@@ -129,8 +152,26 @@ struct Args {
         std::cout << "  --v_edges <value>      Number of vertical inner edges "
                      "of the checkerboard"
                   << std::endl;
-        std::cout << "  --square_size <value>  Size of a square in the "
-                     "checkerboard (in mm)"
+        std::cout << "  --square_size <value>  Size of a square in mm "
+                     "(default 25.4 chessboard / 15 ChArUco)"
+                  << std::endl;
+        std::cout << "  --charuco         Use a ChArUco board instead of a "
+                     "plain chessboard"
+                  << std::endl;
+        std::cout << "  --squares_x <value>    ChArUco: squares along X "
+                     "(default 15)"
+                  << std::endl;
+        std::cout << "  --squares_y <value>    ChArUco: squares along Y "
+                     "(default 11)"
+                  << std::endl;
+        std::cout << "  --marker_size <value>  ChArUco: marker size in mm "
+                     "(default 11)"
+                  << std::endl;
+        std::cout << "  --dict <name>     ChArUco: ArUco dictionary (default "
+                     "DICT_4X4_250)"
+                  << std::endl;
+        std::cout << "  --charuco_legacy  ChArUco: board uses the pre-4.7 "
+                     "(legacy) layout"
                   << std::endl;
         std::cout << "  --svo <file>      Path to the SVO file." << std::endl;
         std::cout << "  --fisheye         Use fisheye lens model." << std::endl;
@@ -175,6 +216,14 @@ struct Args {
             << "  " << argv[0]
             << " --fisheye --virtual --left_sn 301528071 --right_sn 300473441"
             << std::endl;
+        std::cout << std::endl
+                  << "* ZED Stereo Camera with a ChArUco board (AndyMark "
+                     "defaults):"
+                  << std::endl;
+        std::cout << "  " << argv[0]
+                  << " --charuco --squares_x 15 --squares_y 11 "
+                     "--square_size 15 --marker_size 11 --dict DICT_4X4_250"
+                  << std::endl;
         std::cout << std::endl;
         exit(0);
       }
@@ -196,24 +245,57 @@ int main(int argc, char* argv[]) {
   Args args;
   args.parse(argc, argv);
 
+  // The 25.4 mm square default is a chessboard value; the ChArUco defaults
+  // match the AndyMark board (15 mm squares). Using 25.4 with ChArUco would
+  // silently scale all metric outputs (incl. stereo baseline) by 25.4/15.
+  if (use_charuco && !square_size_set) square_size = 15.0f;
+
+  // Board configuration (chessboard by default, ChArUco with --charuco).
+  BoardConfig board_cfg;
+  board_cfg.type = use_charuco ? PatternType::Charuco : PatternType::Chessboard;
+  board_cfg.h_edges = h_edges;
+  board_cfg.v_edges = v_edges;
+  board_cfg.squares_x = squares_x;
+  board_cfg.squares_y = squares_y;
+  board_cfg.square_size = square_size;
+  board_cfg.marker_size = marker_size;
+  board_cfg.dict_name = dict_name;
+  board_cfg.charuco_legacy = charuco_legacy;
+
+  BoardDetector detector(board_cfg);
+
   std::cout << "*** Stereo Camera Calibration Tool ***" << std::endl;
   std::cout << std::endl;
-  std::cout << "The calibration process requires a checkerboard of known "
-               "characteristics."
-            << std::endl;
-  std::cout << " * Expected checkerboard features:" << std::endl;
-  std::cout << "   - Inner horizontal edges:\t" << h_edges << std::endl;
-  std::cout << "   - Inner vertical edges:\t" << v_edges << std::endl;
-  std::cout << "   - Square size:\t\t" << square_size << " mm" << std::endl;
+  if (use_charuco) {
+    std::cout << "The calibration process requires a ChArUco board of known "
+                 "characteristics."
+              << std::endl;
+    std::cout << " * Expected ChArUco board features:" << std::endl;
+    std::cout << "   - Squares (X x Y):\t\t" << squares_x << " x " << squares_y
+              << std::endl;
+    std::cout << "   - Square size:\t\t" << square_size << " mm" << std::endl;
+    std::cout << "   - Marker size:\t\t" << marker_size << " mm" << std::endl;
+    std::cout << "   - ArUco dictionary:\t\t" << dict_name << std::endl;
+  } else {
+    std::cout << "The calibration process requires a checkerboard of known "
+                 "characteristics."
+              << std::endl;
+    std::cout << " * Expected checkerboard features:" << std::endl;
+    std::cout << "   - Inner horizontal edges:\t" << h_edges << std::endl;
+    std::cout << "   - Inner vertical edges:\t" << v_edges << std::endl;
+    std::cout << "   - Square size:\t\t" << square_size << " mm" << std::endl;
+  }
   std::cout << "Change these parameters using the command line options if "
                "needed. Use the '-h' option for help."
             << std::endl;
   std::cout << std::endl;
 
-  // Initialize the calibration checker
-  CalibrationChecker checker(cv::Size(h_edges, v_edges), square_size,
-                             min_samples, max_samples, min_target_area,
-                             idealParams, verbose);
+  // The checker works on the grid of chessboard corners: (h_edges, v_edges) for
+  // a chessboard, (squares_x-1, squares_y-1) for a ChArUco board.
+  CalibrationChecker checker(
+      cv::Size(detector.cornersX(), detector.cornersY()), square_size,
+      min_samples, max_samples, min_target_area, idealParams, verbose,
+      use_charuco);
 
   // Initialize the stereo calibration data structure
   StereoCalib calib;
@@ -449,20 +531,72 @@ int main(int argc, char* argv[]) {
                                       limits_indicator);
         applyPosIndicatorOverlay(rgb_d_fill, pos_indicator);
 
+        // Detection. ChArUco marker detection is scale-sensitive, so it runs on
+        // the full-resolution frames; the classic chessboard keeps its faster
+        // downscaled detection. `pts_l`/`pts_r` are full-res for ChArUco.
         std::vector<cv::Point2f> pts_l, pts_r;
+        std::vector<int> ids_l, ids_r;
         bool found_l = false;
         bool found_r = false;
-        found_l =
-            cv::findChessboardCorners(rgb_d, cv::Size(h_edges, v_edges), pts_l);
-        drawChessboardCorners(rgb_d_fill, cv::Size(h_edges, v_edges),
-                              cv::Mat(pts_l), found_l);
-        if (found_l) {
-          found_r = cv::findChessboardCorners(
-              rgb2_d, cv::Size(h_edges, v_edges), pts_r);
-          drawChessboardCorners(rgb2_d, cv::Size(h_edges, v_edges),
-                                cv::Mat(pts_r), found_r);
+        if (use_charuco) {
+          BoardDetection det_l = detector.detect(rgb_l);
+          found_l = det_l.found;
+          pts_l = det_l.imagePoints;
+          ids_l = det_l.ids;
+          std::vector<cv::Point2f> disp_l = pts_l;
+          scaleKP(disp_l,
+                  cv::Size(camera_resolution.width, camera_resolution.height),
+                  display_size);
+          BoardDetection det_l_disp = det_l;
+          det_l_disp.imagePoints = disp_l;
+          detector.draw(rgb_d_fill, det_l_disp);
+          if (found_l) {
+            BoardDetection det_r = detector.detect(rgb_r);
+            found_r = det_r.found;
+            pts_r = det_r.imagePoints;
+            ids_r = det_r.ids;
+            std::vector<cv::Point2f> disp_r = pts_r;
+            scaleKP(disp_r,
+                    cv::Size(camera_resolution.width, camera_resolution.height),
+                    display_size);
+            BoardDetection det_r_disp = det_r;
+            det_r_disp.imagePoints = disp_r;
+            detector.draw(rgb2_d, det_r_disp);
+          }
+        } else {
+          found_l = cv::findChessboardCorners(rgb_d, cv::Size(h_edges, v_edges),
+                                              pts_l);
+          drawChessboardCorners(rgb_d_fill, cv::Size(h_edges, v_edges),
+                                cv::Mat(pts_l), found_l);
+          if (found_l) {
+            found_r = cv::findChessboardCorners(
+                rgb2_d, cv::Size(h_edges, v_edges), pts_r);
+            drawChessboardCorners(rgb2_d, cv::Size(h_edges, v_edges),
+                                  cv::Mat(pts_r), found_r);
+          }
         }
         
+        // ---- ChArUco live tuning HUD: detected corners per view vs full grid.
+        // The stereo solve only uses corners seen in BOTH views, so aim to keep
+        // L and R counts high and similar (tune distance/lighting/--dict).
+        if (use_charuco) {
+          const int total = detector.cornersX() * detector.cornersY();
+          const int nl = static_cast<int>(ids_l.size());
+          const int nr = static_cast<int>(ids_r.size());
+          const cv::Scalar hud_color =
+              (nl >= detector.minValidCorners() &&
+               nr >= detector.minValidCorners())
+                  ? info_color
+                  : warn_color;
+          std::stringstream ss_ch;
+          ss_ch << "ChArUco L:" << nl << " R:" << nr << " / " << total
+                << " corners";
+          cv::putText(rgb_d_fill, ss_ch.str(), cv::Point(10, 24),
+                      cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 0, 0), 4);
+          cv::putText(rgb_d_fill, ss_ch.str(), cv::Point(10, 24),
+                      cv::FONT_HERSHEY_SIMPLEX, 0.6, hud_color, 2);
+        }
+
         if (image_stack_horizontal) {
           cv::hconcat(rgb_d_fill, rgb2_d, display);
         } else {
@@ -669,13 +803,17 @@ int main(int argc, char* argv[]) {
           blurry_images = false;
 
           if (found_l && found_r) {
-            auto scaled_pts_l = pts_l;
-            scaleKP(
-                pts_l, display_size,
-                cv::Size(camera_resolution.width, camera_resolution.height));
-            scaleKP(
-                pts_r, display_size,
-                cv::Size(camera_resolution.width, camera_resolution.height));
+            const cv::Size cam_size(camera_resolution.width,
+                                    camera_resolution.height);
+            // `pts_l` is display-res for a chessboard, full-res for ChArUco.
+            // full_pts_l feeds the checker; disp_pts_l feeds the coverage poly.
+            std::vector<cv::Point2f> full_pts_l = pts_l;
+            std::vector<cv::Point2f> disp_pts_l = pts_l;
+            if (use_charuco) {
+              scaleKP(disp_pts_l, cam_size, display_size);
+            } else {
+              scaleKP(full_pts_l, display_size, cam_size);
+            }
 
             double sharpness_l = computeSharpness(rgb_l);
             double sharpness_r = computeSharpness(rgb_r);
@@ -686,8 +824,7 @@ int main(int argc, char* argv[]) {
                         << " R=" << sharpness_r
                         << ", min=" << min_sharpness << "). Hold still and retry."
                         << std::endl;
-            } else if (checker.testSample(pts_l, cv::Size(camera_resolution.width,
-                                                   camera_resolution.height))) {
+            } else if (checker.testSample(full_pts_l, cam_size, ids_l)) {
               low_target_variability_on_last_pics = false;
 
               // saves the images
@@ -726,7 +863,17 @@ int main(int argc, char* argv[]) {
                                          limits_indicator, norm_x, norm_y,
                                          norm_size, min_bx, max_bx, min_by,
                                          max_by, (image_count >= 2));
-              addNewCheckerboardPoly(coverage_indicator, scaled_pts_l);
+              // 4 outside corners (TL,TR,BR,BL) in display coordinates.
+              std::vector<cv::Point2f> poly;
+              if (use_charuco) {
+                poly = detector.extremeCorners(disp_pts_l, ids_l);
+              } else {
+                poly = {disp_pts_l[0], disp_pts_l[h_edges - 1],
+                        disp_pts_l[disp_pts_l.size() - 1],
+                        disp_pts_l[disp_pts_l.size() - h_edges]};
+              }
+              if (poly.size() == 4)
+                addNewCheckerboardPoly(coverage_indicator, poly);
             } else {
               std::cout << "  ! Checkerboard detected, but sample not valid. "
                            "Please try again "
@@ -754,7 +901,7 @@ int main(int argc, char* argv[]) {
 
   // Start the calibration process
   int err =
-      calibrate(image_count, image_folder, calib, h_edges, v_edges, square_size,
+      calibrate(image_count, image_folder, calib, board_cfg,
                 zed_info.serial_number, is_dual_mono_camera, is_4k_camera,
                 false, can_use_calib_prior, max_repr_error, verbose);
   if (err == EXIT_SUCCESS)
@@ -858,12 +1005,13 @@ void addNewCheckerboardPosition(cv::Mat& coverage_indicator,
   }
 }
 
+// `pts_l` holds the 4 outside corners in TL, TR, BR, BL order (display coords).
 void addNewCheckerboardPoly(cv::Mat& coverage_indicator,
                             const std::vector<cv::Point2f>& pts_l) {
   cv::Point tl = pts_l[0];
-  cv::Point tr = pts_l[h_edges - 1];
-  cv::Point br = pts_l[pts_l.size() - 1];
-  cv::Point bl = pts_l[pts_l.size() - h_edges];
+  cv::Point tr = pts_l[1];
+  cv::Point br = pts_l[2];
+  cv::Point bl = pts_l[3];
 
   std::vector<cv::Point> poly_pts;
   poly_pts.push_back(tl);

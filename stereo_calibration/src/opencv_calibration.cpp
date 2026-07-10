@@ -4,11 +4,13 @@
 #include <filesystem>
 #include <iomanip>
 #include <numeric>
+#include <unordered_map>
 
 int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
-              int h_edges, int v_edges, double square_size, int serial,
-              bool is_dual_mono, bool is_4k, bool save_calib_mono,
-              bool use_intrinsic_prior, double max_repr_error, bool verbose) {
+              const BoardConfig& board, int serial, bool is_dual_mono,
+              bool is_4k, bool save_calib_mono, bool use_intrinsic_prior,
+              double max_repr_error, bool verbose) {
+  BoardDetector detector(board);
   std::vector<cv::Mat> left_images, right_images;
 
   /// Read images
@@ -55,6 +57,14 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
                   << std::endl;
         return EXIT_FAILURE;
       }
+      if (grey_r.size() != grey_l.size()) {
+        std::cerr << std::endl
+                  << " !!! ERROR !!! " << std::endl
+                  << "Right frame #" << i
+                  << " does not match the left frame size: " << grey_r.size()
+                  << " vs " << grey_l.size() << std::endl;
+        return EXIT_FAILURE;
+      }
 
       left_images.push_back(grey_l);
       right_images.push_back(grey_r);
@@ -64,61 +74,69 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
   std::cout << std::endl
             << " * " << left_images.size() << " samples collected" << std::endl;
 
-  // Define object points of the target
-  // Note: object points must be point3f. Point3d is not supported by
-  // 'cv::calibrateCamera'
-  std::vector<cv::Point3f> pattern_points;
-  for (int i = 0; i < v_edges; i++) {
-    for (int j = 0; j < h_edges; j++) {
-      pattern_points.push_back(
-          cv::Point3f(static_cast<float>(square_size * j), static_cast<float>(square_size * i), 0));
-    }
-  }
-
+  // Object/image points are built per frame so that ChArUco frames (which may
+  // hold only a partial corner subset) contribute the corners they do have.
+  // Note: object points must be Point3f. Point3d is unsupported by
+  // 'cv::calibrateCamera'.
   std::vector<std::vector<cv::Point3f>> object_points;
   std::vector<std::vector<cv::Point2f>> pts_l, pts_r;
 
-  cv::Size t_size(h_edges, v_edges);
+  std::cout << "Detecting the target corners on the images ("
+            << (detector.isCharuco() ? "ChArUco" : "chessboard") << ")"
+            << std::endl;
 
-  std::cout << "Detecting the target corners on the images" << std::endl;
-
-  for (int i = 0; i < left_images.size(); i++) {
+  for (int i = 0; i < (int)left_images.size(); i++) {
     std::cout << "." << std::flush;
-    std::vector<cv::Point2f> pts_l_f, pts_r_f;
-    bool found_l =
-        cv::findChessboardCorners(left_images.at(i), t_size, pts_l_f, 3);
-    bool found_r =
-        cv::findChessboardCorners(right_images.at(i), t_size, pts_r_f, 3);
+    BoardDetection det_l = detector.detect(left_images.at(i));
+    BoardDetection det_r = detector.detect(right_images.at(i));
 
-    if (found_l && found_r) {
-
-      // For HD (1920×1200): cv::Size(11, 11)
-      // For 4K (3840×2160): cv::Size(15, 15)
-      int win = (imageSize.width >= 3000) ? 15 : 11;
-
-      cv::cornerSubPix(
-          left_images.at(i), pts_l_f, cv::Size(win, win), cv::Size(-1, -1),
-          cv::TermCriteria(cv::TermCriteria::EPS | cv::TermCriteria::MAX_ITER,
-                           30, 0.001));
-
-      cv::cornerSubPix(
-          right_images.at(i), pts_r_f, cv::Size(win, win), cv::Size(-1, -1),
-          cv::TermCriteria(cv::TermCriteria::EPS | cv::TermCriteria::MAX_ITER,
-                           30, 0.001));    
-
-      pts_l.push_back(pts_l_f);
-      pts_r.push_back(pts_r_f);
-      object_points.push_back(pattern_points);
-    } else {
+    if (!det_l.found || !det_r.found) {
       std::cout << std::endl
                 << "- No valid targets detected on frames #" << i << " -"
                 << std::endl;
+      continue;
     }
+
+    if (!detector.isCharuco()) {
+      // Dense chessboard: both grids fully present and index-aligned.
+      pts_l.push_back(det_l.imagePoints);
+      pts_r.push_back(det_r.imagePoints);
+      object_points.push_back(det_l.objectPoints);
+      continue;
+    }
+
+    // ChArUco: keep only corners whose id is detected in BOTH views, so the
+    // left/right image points and object points stay point-for-point aligned.
+    std::unordered_map<int, cv::Point2f> right_by_id;
+    right_by_id.reserve(det_r.ids.size());
+    for (size_t k = 0; k < det_r.ids.size(); k++)
+      right_by_id.emplace(det_r.ids[k], det_r.imagePoints[k]);
+
+    std::vector<cv::Point3f> obj_common;
+    std::vector<cv::Point2f> l_common, r_common;
+    for (size_t k = 0; k < det_l.ids.size(); k++) {
+      auto it = right_by_id.find(det_l.ids[k]);
+      if (it == right_by_id.end()) continue;
+      obj_common.push_back(det_l.objectPoints[k]);
+      l_common.push_back(det_l.imagePoints[k]);
+      r_common.push_back(it->second);
+    }
+
+    if ((int)obj_common.size() < detector.minValidCorners()) {
+      std::cout << std::endl
+                << "- Too few shared ChArUco corners on frames #" << i << " ("
+                << obj_common.size() << ") -" << std::endl;
+      continue;
+    }
+
+    pts_l.push_back(l_common);
+    pts_r.push_back(r_common);
+    object_points.push_back(obj_common);
   }
 
   /// Compute calibration
 
-  if (pts_l.size() < MIN_IMAGE) {
+  if ((int)pts_l.size() < MIN_IMAGE) {
     std::cout << " !!! Not enough images with the target detected !!!"
               << std::endl;
     std::cout << " Please perform a new data acquisition." << std::endl
@@ -139,15 +157,27 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
 
   std::cout << std::endl << "*** Monocular cameras calibration *** " << std::endl;
 
-  std::cout << " * Left camera calibration... " << std::flush;
-  auto rms_l = calib_data.left.mono_calibrate(object_points, pts_l, imageSize,
-                                              flags, verbose);
-  std::cout << "Done." << std::endl;
+  double rms_l = -1.0, rms_r = -1.0;
+  try {
+    std::cout << " * Left camera calibration... " << std::flush;
+    rms_l = calib_data.left.mono_calibrate(object_points, pts_l, imageSize,
+                                           flags, verbose);
+    std::cout << "Done." << std::endl;
 
-  std::cout << " * Right camera calibration... " << std::flush;
-  auto rms_r = calib_data.right.mono_calibrate(object_points, pts_r, imageSize,
-                                               flags, verbose);
-  std::cout << "Done." << std::endl;
+    std::cout << " * Right camera calibration... " << std::flush;
+    rms_r = calib_data.right.mono_calibrate(object_points, pts_r, imageSize,
+                                            flags, verbose);
+    std::cout << "Done." << std::endl;
+  } catch (const cv::Exception& e) {
+    // The fisheye solver throws on ill-conditioned data such as sparse
+    // partial ChArUco views.
+    std::cerr << std::endl
+              << " !!! Calibration solver failed: " << e.what() << std::endl
+              << " Collect more (and better-spread) views of the board, or "
+                 "use the Radial-Tangential model instead of --fisheye."
+              << std::endl;
+    return EXIT_FAILURE;
+  }
 
   // Per-frame outlier rejection based on per-camera reprojection error
   // (RadTan model only; fisheye solvePnP is unsupported)
@@ -163,12 +193,19 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
 
     for (int i = 0; i < (int)pts_l.size(); i++) {
       cv::Mat rvec_l, tvec_l, rvec_r, tvec_r;
-      if (!cv::solvePnP(object_points[i], pts_l[i],
-                        calib_data.left.K, calib_data.left.D, rvec_l, tvec_l))
+      // solvePnP can throw (not just return false) on degenerate point sets
+      // such as near-collinear partial ChArUco views — skip those frames.
+      try {
+        if (!cv::solvePnP(object_points[i], pts_l[i],
+                          calib_data.left.K, calib_data.left.D, rvec_l, tvec_l))
+          continue;
+        if (!cv::solvePnP(object_points[i], pts_r[i],
+                          calib_data.right.K, calib_data.right.D, rvec_r,
+                          tvec_r))
+          continue;
+      } catch (const cv::Exception&) {
         continue;
-      if (!cv::solvePnP(object_points[i], pts_r[i],
-                        calib_data.right.K, calib_data.right.D, rvec_r, tvec_r))
-        continue;
+      }
 
       std::vector<cv::Point2f> proj_l, proj_r;
       cv::projectPoints(object_points[i], rvec_l, tvec_l,
@@ -190,7 +227,9 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
 
     auto sorted = frame_errors;
     std::sort(sorted.begin(), sorted.end());
-    const double median_err = sorted[sorted.size() / 2].first;
+    // Guard against an all-solvePnP-failed frame set (empty -> no rejection).
+    const double median_err =
+        sorted.empty() ? 0.0 : sorted[sorted.size() / 2].first;
     const double threshold = std::max(2.5 * median_err, max_repr_error);
 
     std::vector<std::vector<cv::Point3f>> clean_obj;
@@ -235,10 +274,22 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
 
   std::cout << " * Calibration... " << std::flush;
 
-  auto err = calib_data.stereo_calibrate(
-      obj_clean, pts_l_clean, pts_r_clean, imageSize,
-      cv::CALIB_USE_INTRINSIC_GUESS,
-      verbose);
+  double err = -1.0;
+  try {
+    err = calib_data.stereo_calibrate(obj_clean, pts_l_clean, pts_r_clean,
+                                      imageSize, cv::CALIB_USE_INTRINSIC_GUESS,
+                                      verbose);
+  } catch (const cv::Exception& e) {
+    // cv::fisheye::stereoCalibrate runs with CALIB_CHECK_COND and throws
+    // "Ill-conditioned matrix" on degenerate partial ChArUco frames.
+    std::cerr << std::endl
+              << " !!! Stereo calibration solver failed: " << e.what()
+              << std::endl
+              << " Collect more (and better-spread) views of the board, or "
+                 "use the Radial-Tangential model instead of --fisheye."
+              << std::endl;
+    return EXIT_FAILURE;
+  }
 
   std::cout << "Done." << std::endl;
 
@@ -251,9 +302,14 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
 
     for (int i = 0; i < (int)obj_clean.size(); i++) {
       cv::Mat rvec, tvec;
-      if (!cv::solvePnP(obj_clean[i], pts_l_clean[i],
-                        calib_data.left.K, calib_data.left.D, rvec, tvec))
+      // See note above: throwing solvePnP == skip frame.
+      try {
+        if (!cv::solvePnP(obj_clean[i], pts_l_clean[i],
+                          calib_data.left.K, calib_data.left.D, rvec, tvec))
+          continue;
+      } catch (const cv::Exception&) {
         continue;
+      }
 
       std::vector<cv::Point2f> proj_l, proj_r;
       cv::projectPoints(obj_clean[i], rvec, tvec,
@@ -281,7 +337,9 @@ int calibrate(int img_count, const std::string& folder, StereoCalib& calib_data,
 
     auto sorted = frame_errors;
     std::sort(sorted.begin(), sorted.end());
-    const double median_err = sorted[sorted.size() / 2].first;
+    // Guard against an all-solvePnP-failed frame set (empty -> no rejection).
+    const double median_err =
+        sorted.empty() ? 0.0 : sorted[sorted.size() / 2].first;
     const double threshold = std::max(2.5 * median_err, max_repr_error);
 
     std::vector<std::vector<cv::Point3f>> clean_obj2;
@@ -450,7 +508,7 @@ std::string StereoCalib::saveCalibOpenCV(int serial) {
   return std::string();
 }
 
-void printDisto(const CameraCalib& calib, std::ofstream& outfile) {
+static void printDisto(const CameraCalib& calib, std::ofstream& outfile) {
   if (calib.disto_model_RadTan) {
     size_t dist_size = calib.D.total();
     outfile << "k1 = " << calib.D.at<double>(0) << "\n";

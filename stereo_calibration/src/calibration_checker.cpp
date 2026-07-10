@@ -11,8 +11,9 @@ CalibrationChecker::CalibrationChecker(cv::Size board_size, float square_size,
                                        size_t min_samples, size_t max_samples,
                                        float min_target_area,
                                        DetectedBoardParams idealParams,
-                                       bool verbose) {
+                                       bool verbose, bool is_charuco) {
   verbose_ = verbose;
+  is_charuco_ = is_charuco;
 
   // Calibration parameters
   min_samples_ = min_samples;
@@ -36,8 +37,16 @@ CalibrationChecker::CalibrationChecker(cv::Size board_size, float square_size,
 }
 
 bool CalibrationChecker::testSample(const std::vector<cv::Point2f>& corners,
-                                    cv::Size image_size) {
-  DetectedBoardParams params = getDetectedBoardParams(corners, image_size);
+                                    cv::Size image_size,
+                                    const std::vector<int>& ids) {
+  if (is_charuco_ && corners.size() < min_valid_corners_) {
+    std::cout << " * Sample rejected: too few ChArUco corners ("
+              << corners.size() << " < " << min_valid_corners_ << ")."
+              << std::endl;
+    return false;
+  }
+
+  DetectedBoardParams params = getDetectedBoardParams(corners, image_size, ids);
 
   if (params.size < 0 || params.skew < 0) {
     std::cout << " * Sample rejected." << std::endl;
@@ -137,15 +146,49 @@ float CalibrationChecker::compute_area(
 }
 
 std::vector<cv::Point2f> CalibrationChecker::get_outside_corners(
-    const std::vector<cv::Point2f>& corners) {
+    const std::vector<cv::Point2f>& corners, const std::vector<int>& ids) {
   std::vector<cv::Point2f> outside_corners;
 
-  if (corners.size() != board_.board_size.area()) {
+  const int x_dim = board_.board_size.width;
+  const int y_dim = board_.board_size.height;
+
+  if (is_charuco_) {
+    // Partial detection: pick, from the id-tagged corners, the ones nearest to
+    // each of the 4 board grid-corners (TL, TR, BR, BL).
+    if (corners.size() != ids.size() || corners.size() < 4) {
+      return outside_corners;
+    }
+    const int tx[4] = {0, x_dim - 1, x_dim - 1, 0};  // up_left,up_right,down_right,down_left
+    const int ty[4] = {0, 0, y_dim - 1, y_dim - 1};
+    int best_idx[4] = {-1, -1, -1, -1};
+    float best_d[4] = {1e18f, 1e18f, 1e18f, 1e18f};
+    for (size_t k = 0; k < ids.size(); k++) {
+      const int gx = ids[k] % x_dim;
+      const int gy = ids[k] / x_dim;
+      for (int c = 0; c < 4; c++) {
+        const float dx = static_cast<float>(gx - tx[c]);
+        const float dy = static_cast<float>(gy - ty[c]);
+        const float d = dx * dx + dy * dy;
+        if (d < best_d[c]) {
+          best_d[c] = d;
+          best_idx[c] = static_cast<int>(k);
+        }
+      }
+    }
+    outside_corners.resize(4);
+    for (int c = 0; c < 4; c++) {
+      if (best_idx[c] < 0) return {};
+      for (int c2 = 0; c2 < c; c2++)
+        if (best_idx[c] == best_idx[c2]) return {};  // degenerate quad
+      outside_corners[c] = corners[best_idx[c]];
+    }
     return outside_corners;
   }
 
-  size_t x_dim = board_.board_size.width;
-  size_t y_dim = board_.board_size.height;
+  // Dense chessboard: every inner corner present, row-major ordered.
+  if (corners.size() != board_.board_size.area()) {
+    return outside_corners;
+  }
 
   outside_corners.resize(4);
 
@@ -159,10 +202,11 @@ std::vector<cv::Point2f> CalibrationChecker::get_outside_corners(
 }
 
 DetectedBoardParams CalibrationChecker::getDetectedBoardParams(
-    const std::vector<cv::Point2f>& corners, cv::Size image_size) {
+    const std::vector<cv::Point2f>& corners, cv::Size image_size,
+    const std::vector<int>& ids) {
   DetectedBoardParams params;
 
-  auto outside_corners = get_outside_corners(corners);
+  auto outside_corners = get_outside_corners(corners, ids);
   float area = compute_area(outside_corners);
   float skew = compute_skew(outside_corners);
 

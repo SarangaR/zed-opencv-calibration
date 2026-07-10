@@ -24,7 +24,7 @@ typedef struct _detected_board_params {
 // Constants
 const size_t DEFAULT_MIN_SAMPLES = 20;
 const size_t DEFAULT_MAX_SAMPLES = 50;
-const float DEFAULT_MIN_TARGET_AREA = 0.02f;  // Ignore checkerboards smaller than 10% of the image area
+const float DEFAULT_MIN_TARGET_AREA = 0.02f;  // Ignore checkerboards smaller than 2% of the image area
 const DetectedBoardParams DEFAULT_IDEAL_PARAMS = {
     cv::Point2f(
         0.65f,  // Checkerboard X position should cover 65% of the image width
@@ -38,16 +38,21 @@ const DetectedBoardParams DEFAULT_IDEAL_PARAMS = {
 
 class CalibrationChecker {
  public:
+  // board_size is the grid of INNER/CHESSBOARD corners: (h_edges, v_edges) for a
+  // chessboard, or (squares_x-1, squares_y-1) for a ChArUco board. When
+  // is_charuco is true, samples carry per-corner ids and may be partial.
   CalibrationChecker(cv::Size board_size, float square_size,
                      size_t min_samples = DEFAULT_MIN_SAMPLES,
                      size_t max_samples = DEFAULT_MAX_SAMPLES,
                      float min_target_area = DEFAULT_MIN_TARGET_AREA,
                      DetectedBoardParams idealParams = DEFAULT_IDEAL_PARAMS,
-                     bool verbose = false);
+                     bool verbose = false, bool is_charuco = false);
   ~CalibrationChecker() = default;
 
-  // Test if the detected corners form a valid sample
-  bool testSample(const std::vector<cv::Point2f>& corners, cv::Size image_size);
+  // Test if the detected corners form a valid sample. For a ChArUco board pass
+  // the matching per-corner ids (empty for a chessboard).
+  bool testSample(const std::vector<cv::Point2f>& corners, cv::Size image_size,
+                  const std::vector<int>& ids = {});
 
   // Retrieve valid corners
   const std::vector<std::vector<cv::Point2f>>& getValidCorners() const {
@@ -73,15 +78,17 @@ class CalibrationChecker {
  private:
   // Calculate the parameter of a detected checkerboard
   DetectedBoardParams getDetectedBoardParams(
-      const std::vector<cv::Point2f>& corners, cv::Size image_size);
+      const std::vector<cv::Point2f>& corners, cv::Size image_size,
+      const std::vector<int>& ids);
 
   // Check if the detected corners are valid
   bool isGoodSample(const DetectedBoardParams& params);
 
-  // Helper functions
+  // Helper functions. For ChArUco, ids identify each corner so the 4 extreme
+  // corners can be found even when the board is partially detected.
   std::vector<cv::Point2f> get_outside_corners(
-      const std::vector<cv::Point2f>&
-          corners);  // Get the 4 outside corners of a checkerboard
+      const std::vector<cv::Point2f>& corners,
+      const std::vector<int>& ids);  // Get the 4 outside corners of the board
   float compute_skew(
       const std::vector<cv::Point2f>&
           outside_corners);  // Compute skew based on the 4 outside corners
@@ -107,6 +114,9 @@ class CalibrationChecker {
   float min_target_area_ = DEFAULT_MIN_TARGET_AREA; // Ignore checkerboards smaller than this area (percentage of image area)
 
   bool verbose_ = false;
+
+  bool is_charuco_ = false;       // ChArUco mode: ids present, partial boards OK
+  size_t min_valid_corners_ = 6;  // Minimum ChArUco corners per accepted sample
 };
 
 #endif  // CALIBRATION_CHECKER_HPP
