@@ -98,11 +98,12 @@ make -j$(nproc)
 Any arguments after the tool name (or after a literal `--`) are passed straight through.
 
 ```bash
-./build_and_run.sh <tool> [--rebuild] [-- <tool arguments...>]
+./build_and_run.sh <tool> [--rebuild] [--webcam-only] [-- <tool arguments...>]
 ```
 
 `<tool>` is one of `mono_calib`, `mono_check`, `stereo_calib`, `stereo_check`, `viewer`.
-`--rebuild` forces a clean reconfigure + rebuild.
+`--rebuild` forces a clean reconfigure + rebuild. `--webcam-only` selects the ZED-free
+test build (see [Webcam test mode](#webcam-test-mode-no-zed-sdk--no-zed-camera)).
 
 ```bash
 # Build (first time) and run monocular ChArUco calibration with defaults
@@ -147,6 +148,14 @@ cmake --build /work/build-webcam -j
 
 # Validate the produced calibration (webcam mode requires --calib_opencv):
 ./build-webcam/monocular_checker/zed_mono_checker --webcam 0 --charuco \
+    --calib_opencv mono_calibration_SN0.yml
+```
+
+Or let the helper script do the build + run in one step:
+
+```bash
+./build_and_run.sh mono_calib --webcam-only -- --webcam 0 --charuco
+./build_and_run.sh mono_check --webcam-only -- --webcam 0 --charuco \
     --calib_opencv mono_calibration_SN0.yml
 ```
 
