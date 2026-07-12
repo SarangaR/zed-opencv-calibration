@@ -1,3 +1,5 @@
+#include <atomic>
+#include <csignal>
 #include <iomanip>
 #include <sstream>
 #include <unordered_map>
@@ -194,6 +196,7 @@ struct Args {
     int left_camera_sn = -1;
     int right_camera_sn = -1;
     std::string calib_opencv_file;  // optional: passed to InitParameters
+    bool mirror = false;            // horizontally mirror the live preview only
 
     void parse(int argc, char* argv[]) {
         app_name = argv[0];
@@ -201,6 +204,8 @@ struct Args {
             std::string arg = argv[i];
             if (arg == "--svo" && i + 1 < argc) {
                 svo_path = argv[++i];
+            } else if (arg == "--mirror") {
+                mirror = true;
             } else if (arg == "--fisheye") {
                 is_radtan_lens = false;
             } else if (arg == "--virtual") {
@@ -237,6 +242,7 @@ struct Args {
             } else if (arg == "--help" || arg == "-h") {
                 std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
                 std::cout << "  --calib_opencv <file>  Path to an OpenCV YAML calibration file" << std::endl;
+                std::cout << "  --mirror               Mirror the live preview horizontally (selfie view; display only)" << std::endl;
                 std::cout << "                         (if omitted, the camera's internal calibration is used)" << std::endl;
                 std::cout << "  --h_edges <value>      Number of horizontal inner edges of the checkerboard" << std::endl;
                 std::cout << "  --v_edges <value>      Number of vertical inner edges of the checkerboard" << std::endl;
@@ -272,10 +278,21 @@ struct Args {
     }
 };
 
+// Ctrl+C / SIGTERM: request a clean shutdown (release camera, exit). A second
+// signal falls back to the default handler and force-kills.
+std::atomic<bool> g_stop_requested{false};
+void onStopSignal(int sig) {
+    g_stop_requested = true;
+    std::signal(sig, SIG_DFL);
+}
+
 // ---------------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
+    std::signal(SIGINT, onStopSignal);
+    std::signal(SIGTERM, onStopSignal);
+
     Args args;
     args.parse(argc, argv);
 
@@ -421,8 +438,21 @@ int main(int argc, char* argv[]) {
     std::cout << "Point the camera at the checkerboard. Press 'q' or ESC to quit." << std::endl;
 
     char key = ' ';
+    bool window_was_visible = false;  // arms the title-bar-X close detection
     while (1) {
-        if (key == 'q' || key == 'Q' || key == 27) break;
+        if (key == 'q' || key == 'Q' || key == 27 || g_stop_requested) break;
+
+        // Window closed via the title-bar X: quit like 'q'. The GTK backend
+        // does not implement WND_PROP_VISIBLE, but any property query returns
+        // -1 once the window is destroyed — probe WND_PROP_AUTOSIZE (>= 0
+        // while the window exists), armed after the first positive read.
+        const bool window_exists =
+            cv::getWindowProperty(window_name, cv::WND_PROP_AUTOSIZE) >= 0;
+        if (window_exists) {
+            window_was_visible = true;
+        } else if (window_was_visible) {
+            break;
+        }
 
         if (zed_camera.grab() != sl::ERROR_CODE::SUCCESS) {
             key = cv::waitKey(10);
@@ -456,11 +486,6 @@ int main(int argc, char* argv[]) {
                                                   tvec_l, calib.K_left,
                                                   calib.D_left, calib.is_fisheye);
                 }
-                std::vector<cv::Point2f> disp = det_l.imagePoints;
-                scaleKP(disp, full_size, display_size);
-                BoardDetection dd = det_l;
-                dd.imagePoints = disp;
-                detector.draw(rgb_d_l, dd);
             }
             if (found_r) {
                 cv::Mat rvec_r_ind, tvec_r_ind;
@@ -472,11 +497,27 @@ int main(int argc, char* argv[]) {
                         tvec_r_ind, calib.K_right, calib.D_right,
                         calib.is_fisheye);
                 }
-                std::vector<cv::Point2f> disp = det_r.imagePoints;
-                scaleKP(disp, full_size, display_size);
-                BoardDetection dd = det_r;
-                dd.imagePoints = disp;
-                detector.draw(rgb_d_r, dd);
+            }
+
+            // Draw downscaled copies on the display images: corner dots when
+            // the board is valid, raw ArUco tag outlines always (shows which
+            // markers each camera picks up even when the board detection
+            // fails in that view).
+            auto draw_view = [&](const BoardDetection& det, cv::Mat& img) {
+                BoardDetection dd = det;
+                scaleKP(dd.imagePoints, full_size, display_size);
+                for (auto& mc : dd.markerCorners)
+                    scaleKP(mc, full_size, display_size);
+                detector.draw(img, dd);
+            };
+            draw_view(det_l, rgb_d_l);
+            draw_view(det_r, rgb_d_r);
+
+            // Mirror the preview (selfie view) AFTER scene-space overlays,
+            // BEFORE the HUD text so it stays readable.
+            if (args.mirror) {
+                cv::flip(rgb_d_l, rgb_d_l, 1);
+                cv::flip(rgb_d_r, rgb_d_r, 1);
             }
 
             // ChArUco tuning HUD: detected corners per view vs full grid.
@@ -607,6 +648,11 @@ int main(int argc, char* argv[]) {
                 err_stereo = std::sqrt(
                     (err_left * err_left + err_right_from_stereo * err_right_from_stereo) / 2.0);
             }
+
+            if (args.mirror) {
+                cv::flip(rgb_d_l, rgb_d_l, 1);
+                cv::flip(rgb_d_r, rgb_d_r, 1);
+            }
         }
 
         // Update persisted display values when detection is valid
@@ -661,5 +707,6 @@ int main(int argc, char* argv[]) {
     }
 
     zed_camera.close();
+    cv::destroyAllWindows();
     return EXIT_SUCCESS;
 }

@@ -1,3 +1,5 @@
+#include <atomic>
+#include <csignal>
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
@@ -68,6 +70,31 @@ const double min_sharpness = 100.0;
 bool verbose = false;
 int sdk_verbose = 0;
 
+// Ctrl+C / SIGTERM: request a clean shutdown (release camera, exit). A second
+// signal falls back to the default handler and force-kills, in case the
+// process is stuck outside the acquisition loop.
+std::atomic<bool> g_stop_requested{false};
+void onStopSignal(int sig) {
+  g_stop_requested = true;
+  std::signal(sig, SIG_DFL);
+}
+
+// Auto-capture toggle: clickable button in the side panel (also key 'a').
+// When enabled, any detected board is fed to CalibrationChecker::testSample
+// automatically; frames are saved only when the checker accepts them, i.e.
+// when they actually widen the coverage / size / skew diversity.
+struct AutoCaptureButton {
+  bool enabled = false;
+  cv::Rect rect;  // hit area, in rendering-image (display + panel) coords
+};
+
+void onMouseToggleAutoCapture(int event, int x, int y, int /*flags*/,
+                              void* userdata) {
+  auto* btn = static_cast<AutoCaptureButton*>(userdata);
+  if (event == cv::EVENT_LBUTTONDOWN && btn->rect.contains(cv::Point(x, y)))
+    btn->enabled = !btn->enabled;
+}
+
 void scaleKP(std::vector<cv::Point2f>& pts, cv::Size in, cv::Size out) {
   float rx = out.width / static_cast<float>(in.width);
   float ry = out.height / static_cast<float>(in.height);
@@ -86,6 +113,7 @@ struct Args {
   bool use_stored_images = false;
   bool use_webcam = false;         // test mode: plain cv::VideoCapture input
   std::string webcam_source = "0"; // device id ("0") or video file path/URL
+  bool mirror = false;             // horizontally mirror the live preview only
 
   void parse(int argc, char* argv[]) {
     app_name = argv[0];
@@ -96,6 +124,8 @@ struct Args {
       } else if (arg == "--webcam" && i + 1 < argc) {
         use_webcam = true;
         webcam_source = argv[++i];
+      } else if (arg == "--mirror") {
+        mirror = true;
       } else if (arg == "--fisheye") {
         is_radtan_lens = false;
       } else if (arg == "--id" && i + 1 < argc) {
@@ -157,6 +187,10 @@ struct Args {
         std::cout << "  --webcam <id|path>     Test mode: use a plain webcam "
                      "(device id) or a video file instead of a ZED."
                   << std::endl;
+        std::cout << "  --mirror               Mirror the live preview "
+                     "horizontally (selfie view; display only, calibration "
+                     "data is unaffected)."
+                  << std::endl;
         std::cout << "  --fisheye              Use fisheye lens model."
                   << std::endl;
         std::cout << "  --id <id>              Camera ID of the ZED X One."
@@ -197,6 +231,9 @@ struct Args {
 };
 
 int main(int argc, char* argv[]) {
+  std::signal(SIGINT, onStopSignal);
+  std::signal(SIGTERM, onStopSignal);
+
   const DetectedBoardParams idealParams = {
       cv::Point2f(min_avg_x_coverage, min_avg_y_coverage), min_area_range,
       min_skew_range, min_b_x_coverage, min_b_y_coverage};
@@ -413,12 +450,24 @@ int main(int argc, char* argv[]) {
     cv::resizeWindow(window_name, display_size.width + text_area_width,
                      display_size.height);
 
+    // Auto-capture button lives in the side panel, below the status table.
+    const cv::Rect auto_btn_local(10, display_size.height - 46, 300, 36);
+    AutoCaptureButton auto_btn;
+    auto_btn.rect = cv::Rect(display_size.width + auto_btn_local.x,
+                             auto_btn_local.y, auto_btn_local.width,
+                             auto_btn_local.height);
+    cv::setMouseCallback(window_name, onMouseToggleAutoCapture, &auto_btn);
+    double next_auto_attempt = 0.0;  // seconds; throttles auto testSample calls
+    bool window_was_visible = false;  // arms the title-bar-X close detection
+
     while (1) {
-      if (key == 'q' || key == 'Q' || key == 27) {
+      if (key == 'q' || key == 'Q' || key == 27 || g_stop_requested) {
         std::cout << "Calibration aborted by user." << std::endl;
+        if (args.use_webcam) cap.release();
 #ifndef WEBCAM_ONLY
         if (!args.use_webcam) zed_cam.close();
 #endif
+        cv::destroyAllWindows();
         return EXIT_SUCCESS;
       }
 
@@ -469,6 +518,8 @@ int main(int argc, char* argv[]) {
           scaleKP(pts_disp, cam_size, display_size);
           BoardDetection det_disp = det;
           det_disp.imagePoints = pts_disp;
+          for (auto& mc : det_disp.markerCorners)
+            scaleKP(mc, cam_size, display_size);
           detector.draw(rgb_d_fill, det_disp);
         } else {
           found = cv::findChessboardCorners(rgb_d, cv::Size(h_edges, v_edges),
@@ -478,6 +529,11 @@ int main(int argc, char* argv[]) {
         }
 
         display = rgb_d_fill;
+
+        // Mirror the preview (selfie view) AFTER all scene-space overlays so
+        // they flip with the image, and BEFORE the HUD text so it stays
+        // readable. Detection/calibration always run on the unmirrored frame.
+        if (args.mirror) cv::flip(display, display, 1);
 
         // ---- ChArUco live tuning HUD: detected corners vs the full grid.
         // Use it to tune distance / lighting / --dict / board params: aim to
@@ -657,22 +713,65 @@ int main(int argc, char* argv[]) {
                 cv::Point(10, v_pos + 110),
                 cv::FONT_HERSHEY_SIMPLEX, 0.55, warn_color, 2);
           }
+
+          // Auto-capture toggle button (click or key 'a').
+          const cv::Scalar btn_fill = auto_btn.enabled
+                                          ? cv::Scalar(40, 120, 40)
+                                          : cv::Scalar(60, 60, 60);
+          cv::rectangle(text_info, auto_btn_local, btn_fill, -1);
+          cv::rectangle(text_info, auto_btn_local,
+                        auto_btn.enabled ? info_color : cv::Scalar(160, 160, 160),
+                        2);
+          cv::putText(text_info,
+                      auto_btn.enabled ? "AUTO CAPTURE: ON  [a]"
+                                       : "AUTO CAPTURE: OFF [a]",
+                      cv::Point(auto_btn_local.x + 14, auto_btn_local.y + 25),
+                      cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                      cv::Scalar(255, 255, 255), 2);
         }
 
         cv::hconcat(display, text_info, rendering_image);
         cv::imshow(window_name, rendering_image);
         key = cv::waitKey(10);
 
+        // Window closed via the title-bar X: shut down like 'q'. The GTK
+        // backend does not implement WND_PROP_VISIBLE (always -1), but any
+        // property query returns -1 once the window is destroyed — so probe
+        // WND_PROP_AUTOSIZE (>= 0 while the window exists) and only treat -1
+        // as "closed" after the window has been seen alive once.
+        const bool window_exists =
+            cv::getWindowProperty(window_name, cv::WND_PROP_AUTOSIZE) >= 0;
+        if (window_exists) {
+          window_was_visible = true;
+        } else if (window_was_visible) {
+          g_stop_requested = true;
+          continue;
+        }
+
         if (acquisition_completed) {
           std::cout << " *** Starting the calibration process ***" << std::endl;
           break;
         }
 
-        if (key == 's' || key == 'S' || key == ' ') {
-          std::cout << "*** New acquisition triggered ***" << std::endl;
+        if (key == 'a' || key == 'A') auto_btn.enabled = !auto_btn.enabled;
 
-          missing_target = !found;
-          blurry_image = false;
+        // Manual capture on keypress; auto capture attempts a (throttled)
+        // testSample whenever a board is detected — the checker only accepts
+        // frames that improve sample diversity, so holding the board still
+        // does not flood the database with duplicates.
+        const bool manual_capture = (key == 's' || key == 'S' || key == ' ');
+        const double now_s =
+            static_cast<double>(cv::getTickCount()) / cv::getTickFrequency();
+        const bool auto_attempt = auto_btn.enabled && !manual_capture &&
+                                  found && now_s >= next_auto_attempt;
+
+        if (manual_capture || auto_attempt) {
+          bool sample_accepted = false;
+          if (manual_capture) {
+            std::cout << "*** New acquisition triggered ***" << std::endl;
+            missing_target = !found;
+            blurry_image = false;
+          }
 
           if (found) {
             // `pts` is display-res for a chessboard, full-res for ChArUco.
@@ -687,13 +786,16 @@ int main(int argc, char* argv[]) {
             }
 
             double sharpness = computeSharpness(rgb);
-            blurry_image = sharpness < min_sharpness;
-            if (blurry_image) {
-              std::cerr << "  ! Image too blurry (sharpness=" << std::fixed
-                        << std::setprecision(1) << sharpness
-                        << ", min=" << min_sharpness
-                        << "). Hold still and retry." << std::endl;
+            const bool too_blurry = sharpness < min_sharpness;
+            if (manual_capture) blurry_image = too_blurry;
+            if (too_blurry) {
+              if (manual_capture)
+                std::cerr << "  ! Image too blurry (sharpness=" << std::fixed
+                          << std::setprecision(1) << sharpness
+                          << ", min=" << min_sharpness
+                          << "). Hold still and retry." << std::endl;
             } else if (checker.testSample(full_pts, cam_size, ids)) {
+              sample_accepted = true;
               low_target_variability = false;
 
               if (image_count < 0) image_count = 0;
@@ -731,7 +833,7 @@ int main(int argc, char* argv[]) {
               }
               if (poly.size() == 4)
                 addNewCheckerboardPoly(coverage_indicator, poly);
-            } else {
+            } else if (manual_capture) {
               std::cout << "  ! Checkerboard detected, but sample not valid. "
                            "Please try again with a new position/orientation."
                         << std::endl;
@@ -741,6 +843,11 @@ int main(int argc, char* argv[]) {
             std::cerr << "  ! Checkerboard not detected in the image."
                       << std::endl;
           }
+
+          // Throttle auto attempts: a longer pause after an accepted sample
+          // gives the operator time to move the board to a new pose.
+          if (auto_attempt)
+            next_auto_attempt = now_s + (sample_accepted ? 1.2 : 0.5);
         }
       }
     }

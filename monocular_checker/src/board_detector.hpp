@@ -56,6 +56,12 @@ struct BoardDetection {
   std::vector<cv::Point3f> objectPoints;   // matching board points (planar, Z=0)
   std::vector<int> ids;                    // ChArUco corner ids; empty for chessboard
   std::vector<cv::Point2f> outsideCorners; // 4 extreme corners TL,TR,BR,BL (coverage geometry)
+
+  // ChArUco only: raw ArUco marker detections (4 corners per marker + id),
+  // filled even when the board detection itself fails (`found == false`) so
+  // the live GUI can show which tags are seen. Empty for a chessboard.
+  std::vector<std::vector<cv::Point2f>> markerCorners;
+  std::vector<int> markerIds;
 };
 
 class BoardDetector {

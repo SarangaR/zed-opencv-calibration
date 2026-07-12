@@ -1,0 +1,38 @@
+[
+{
+  "directory": "/root/zed-opencv-calibration/build-webcam/monocular_calibration",
+  "command": "/usr/bin/c++ -DWEBCAM_ONLY -I/root/zed-opencv-calibration/monocular_calibration/include -isystem /opt/opencv/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_calibration.dir/src/board_detector.cpp.o -c /root/zed-opencv-calibration/monocular_calibration/src/board_detector.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_calibration/src/board_detector.cpp",
+  "output": "monocular_calibration/CMakeFiles/zed_mono_calibration.dir/src/board_detector.cpp.o"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-webcam/monocular_calibration",
+  "command": "/usr/bin/c++ -DWEBCAM_ONLY -I/root/zed-opencv-calibration/monocular_calibration/include -isystem /opt/opencv/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_calibration.dir/src/calibration_checker.cpp.o -c /root/zed-opencv-calibration/monocular_calibration/src/calibration_checker.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_calibration/src/calibration_checker.cpp",
+  "output": "monocular_calibration/CMakeFiles/zed_mono_calibration.dir/src/calibration_checker.cpp.o"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-webcam/monocular_calibration",
+  "command": "/usr/bin/c++ -DWEBCAM_ONLY -I/root/zed-opencv-calibration/monocular_calibration/include -isystem /opt/opencv/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_calibration.dir/src/main.cpp.o -c /root/zed-opencv-calibration/monocular_calibration/src/main.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_calibration/src/main.cpp",
+  "output": "monocular_calibration/CMakeFiles/zed_mono_calibration.dir/src/main.cpp.o"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-webcam/monocular_calibration",
+  "command": "/usr/bin/c++ -DWEBCAM_ONLY -I/root/zed-opencv-calibration/monocular_calibration/include -isystem /opt/opencv/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_calibration.dir/src/opencv_calibration.cpp.o -c /root/zed-opencv-calibration/monocular_calibration/src/opencv_calibration.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_calibration/src/opencv_calibration.cpp",
+  "output": "monocular_calibration/CMakeFiles/zed_mono_calibration.dir/src/opencv_calibration.cpp.o"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-webcam/monocular_checker",
+  "command": "/usr/bin/c++ -DWEBCAM_ONLY -isystem /opt/opencv/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_checker.dir/src/board_detector.cpp.o -c /root/zed-opencv-calibration/monocular_checker/src/board_detector.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_checker/src/board_detector.cpp",
+  "output": "monocular_checker/CMakeFiles/zed_mono_checker.dir/src/board_detector.cpp.o"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-webcam/monocular_checker",
+  "command": "/usr/bin/c++ -DWEBCAM_ONLY -isystem /opt/opencv/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_checker.dir/src/main.cpp.o -c /root/zed-opencv-calibration/monocular_checker/src/main.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_checker/src/main.cpp",
+  "output": "monocular_checker/CMakeFiles/zed_mono_checker.dir/src/main.cpp.o"
+}
+]

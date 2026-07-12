@@ -1,3 +1,5 @@
+#include <atomic>
+#include <csignal>
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
@@ -94,6 +96,32 @@ void scaleKP(std::vector<cv::Point2f>& pts, cv::Size in, cv::Size out) {
   }
 }
 
+// Ctrl+C / SIGTERM: request a clean shutdown (release camera, exit). A second
+// signal falls back to the default handler and force-kills, in case the
+// process is stuck outside the acquisition loop.
+std::atomic<bool> g_stop_requested{false};
+void onStopSignal(int sig) {
+  g_stop_requested = true;
+  std::signal(sig, SIG_DFL);
+}
+
+// Auto-capture toggle: clickable button in the bottom panel (also key 'a').
+// When enabled, any frame with the board detected in both views is fed to
+// CalibrationChecker::testSample automatically; frames are saved only when
+// the checker accepts them, i.e. when they actually widen the coverage /
+// size / skew diversity.
+struct AutoCaptureButton {
+  bool enabled = false;
+  cv::Rect rect;  // hit area, in rendering-image coords
+};
+
+void onMouseToggleAutoCapture(int event, int x, int y, int /*flags*/,
+                              void* userdata) {
+  auto* btn = static_cast<AutoCaptureButton*>(userdata);
+  if (event == cv::EVENT_LBUTTONDOWN && btn->rect.contains(cv::Point(x, y)))
+    btn->enabled = !btn->enabled;
+}
+
 struct Args {
   std::string app_name;
   std::string svo_path = "";
@@ -104,6 +132,7 @@ struct Args {
   int left_camera_sn = -1;
   int right_camera_sn = -1;
   bool use_stored_images = false;
+  bool mirror = false;  // horizontally mirror the live preview only
 
   void parse(int argc, char* argv[]) {
     app_name = argv[0];
@@ -111,6 +140,8 @@ struct Args {
       std::string arg = argv[i];
       if (arg == "--svo" && i + 1 < argc) {
         svo_path = argv[++i];
+      } else if (arg == "--mirror") {
+        mirror = true;
       } else if (arg == "--fisheye") {
         is_radtan_lens = false;
       } else if (arg == "--virtual") {
@@ -174,6 +205,10 @@ struct Args {
                      "(legacy) layout"
                   << std::endl;
         std::cout << "  --svo <file>      Path to the SVO file." << std::endl;
+        std::cout << "  --mirror          Mirror the live preview horizontally "
+                     "(selfie view; display only, calibration data is "
+                     "unaffected)."
+                  << std::endl;
         std::cout << "  --fisheye         Use fisheye lens model." << std::endl;
         std::cout << "  --virtual         Use ZED X One cameras as a virtual "
                      "stereo pair."
@@ -232,6 +267,9 @@ struct Args {
 };
 
 int main(int argc, char* argv[]) {
+  std::signal(SIGINT, onStopSignal);
+  std::signal(SIGTERM, onStopSignal);
+
   // Setup the calibration checker
   const DetectedBoardParams idealParams = {
       cv::Point2f(min_avg_x_coverage, min_avg_y_coverage), min_area_range,
@@ -509,10 +547,16 @@ int main(int argc, char* argv[]) {
     cv::resizeWindow(window_name, display_size.width * 2,
                      display_size.height + text_area_height);
 
+    AutoCaptureButton auto_btn;  // rect set each frame (depends on layout)
+    cv::setMouseCallback(window_name, onMouseToggleAutoCapture, &auto_btn);
+    double next_auto_attempt = 0.0;  // seconds; throttles auto testSample calls
+    bool window_was_visible = false;  // arms the title-bar-X close detection
+
     while (1) {
-      if (key == 'q' || key == 'Q' || key == 27) {
+      if (key == 'q' || key == 'Q' || key == 27 || g_stop_requested) {
         std::cout << "Calibration aborted by user." << std::endl;
         zed_camera.close();
+        cv::destroyAllWindows();
         return EXIT_SUCCESS;
       }
 
@@ -549,6 +593,10 @@ int main(int argc, char* argv[]) {
                   display_size);
           BoardDetection det_l_disp = det_l;
           det_l_disp.imagePoints = disp_l;
+          for (auto& mc : det_l_disp.markerCorners)
+            scaleKP(mc,
+                    cv::Size(camera_resolution.width, camera_resolution.height),
+                    display_size);
           detector.draw(rgb_d_fill, det_l_disp);
           if (found_l) {
             BoardDetection det_r = detector.detect(rgb_r);
@@ -561,6 +609,11 @@ int main(int argc, char* argv[]) {
                     display_size);
             BoardDetection det_r_disp = det_r;
             det_r_disp.imagePoints = disp_r;
+            for (auto& mc : det_r_disp.markerCorners)
+              scaleKP(
+                  mc,
+                  cv::Size(camera_resolution.width, camera_resolution.height),
+                  display_size);
             detector.draw(rgb2_d, det_r_disp);
           }
         } else {
@@ -576,6 +629,14 @@ int main(int argc, char* argv[]) {
           }
         }
         
+        // Mirror the preview (selfie view) AFTER all scene-space overlays so
+        // they flip with the images, and BEFORE the HUD text so it stays
+        // readable. Detection/calibration always run on the unmirrored frames.
+        if (args.mirror) {
+          cv::flip(rgb_d_fill, rgb_d_fill, 1);
+          cv::flip(rgb2_d, rgb2_d, 1);
+        }
+
         // ---- ChArUco live tuning HUD: detected corners per view vs full grid.
         // The stereo solve only uses corners seen in BOTH views, so aim to keep
         // L and R counts high and similar (tune distance/lighting/--dict).
@@ -786,21 +847,70 @@ int main(int argc, char* argv[]) {
           cv::putText(rendering_image, ss_img_count.str(), cv::Point(10, v_pos),
                       cv::FONT_HERSHEY_SIMPLEX, 0.7,
                       (image_count > min_samples ? info_color : warn_color), 1);
+
+          // Auto-capture toggle button (click or key 'a'), top-right of the
+          // bottom panel. Rect recomputed each frame: layout depends on the
+          // horizontal/vertical image stacking.
+          auto_btn.rect = cv::Rect(rendering_image.cols - 320,
+                                   display.size[0] + 12, 300, 36);
+          const cv::Scalar btn_fill = auto_btn.enabled
+                                          ? cv::Scalar(40, 120, 40)
+                                          : cv::Scalar(60, 60, 60);
+          cv::rectangle(rendering_image, auto_btn.rect, btn_fill, -1);
+          cv::rectangle(rendering_image, auto_btn.rect,
+                        auto_btn.enabled ? info_color
+                                         : cv::Scalar(160, 160, 160),
+                        2);
+          cv::putText(rendering_image,
+                      auto_btn.enabled ? "AUTO CAPTURE: ON  [a]"
+                                       : "AUTO CAPTURE: OFF [a]",
+                      cv::Point(auto_btn.rect.x + 14, auto_btn.rect.y + 25),
+                      cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255),
+                      2);
         }
 
         cv::imshow(window_name, rendering_image);
         key = cv::waitKey(10);
+
+        // Window closed via the title-bar X: shut down like 'q'. The GTK
+        // backend does not implement WND_PROP_VISIBLE (always -1), but any
+        // property query returns -1 once the window is destroyed — so probe
+        // WND_PROP_AUTOSIZE (>= 0 while the window exists) and only treat -1
+        // as "closed" after the window has been seen alive once.
+        const bool window_exists =
+            cv::getWindowProperty(window_name, cv::WND_PROP_AUTOSIZE) >= 0;
+        if (window_exists) {
+          window_was_visible = true;
+        } else if (window_was_visible) {
+          g_stop_requested = true;
+          continue;
+        }
+
+        if (key == 'a' || key == 'A') auto_btn.enabled = !auto_btn.enabled;
 
         if (acquisition_completed) {
           std::cout << " *** Starting the calibration process ***" << std::endl;
           break;
         }
 
-        if ((key == 's' || key == 'S') || key == ' ') {
-          std::cout << "*** New acquisition triggered ***" << std::endl;
+        // Manual capture on keypress; auto capture attempts a (throttled)
+        // testSample whenever the board is detected in both views — the
+        // checker only accepts frames that improve sample diversity.
+        const bool manual_capture =
+            (key == 's' || key == 'S') || key == ' ';
+        const double now_s =
+            static_cast<double>(cv::getTickCount()) / cv::getTickFrequency();
+        const bool auto_attempt = auto_btn.enabled && !manual_capture &&
+                                  found_l && found_r &&
+                                  now_s >= next_auto_attempt;
 
-          missing_target_on_last_pics = !found_r || !found_l;
-          blurry_images = false;
+        if (manual_capture || auto_attempt) {
+          bool sample_accepted = false;
+          if (manual_capture) {
+            std::cout << "*** New acquisition triggered ***" << std::endl;
+            missing_target_on_last_pics = !found_r || !found_l;
+            blurry_images = false;
+          }
 
           if (found_l && found_r) {
             const cv::Size cam_size(camera_resolution.width,
@@ -817,14 +927,17 @@ int main(int argc, char* argv[]) {
 
             double sharpness_l = computeSharpness(rgb_l);
             double sharpness_r = computeSharpness(rgb_r);
-            blurry_images = sharpness_l < min_sharpness || sharpness_r < min_sharpness;
-            if (blurry_images) {
-              std::cerr << "  ! Images too blurry (L=" << std::fixed
-                        << std::setprecision(1) << sharpness_l
-                        << " R=" << sharpness_r
-                        << ", min=" << min_sharpness << "). Hold still and retry."
-                        << std::endl;
+            const bool too_blurry =
+                sharpness_l < min_sharpness || sharpness_r < min_sharpness;
+            if (manual_capture) blurry_images = too_blurry;
+            if (too_blurry) {
+              if (manual_capture)
+                std::cerr << "  ! Images too blurry (L=" << std::fixed
+                          << std::setprecision(1) << sharpness_l
+                          << " R=" << sharpness_r << ", min=" << min_sharpness
+                          << "). Hold still and retry." << std::endl;
             } else if (checker.testSample(full_pts_l, cam_size, ids_l)) {
+              sample_accepted = true;
               low_target_variability_on_last_pics = false;
 
               // saves the images
@@ -874,7 +987,7 @@ int main(int argc, char* argv[]) {
               }
               if (poly.size() == 4)
                 addNewCheckerboardPoly(coverage_indicator, poly);
-            } else {
+            } else if (manual_capture) {
               std::cout << "  ! Checkerboard detected, but sample not valid. "
                            "Please try again "
                            "with a new position/orientation, not similar to "
@@ -891,6 +1004,11 @@ int main(int argc, char* argv[]) {
                         << std::endl;
             }
           }
+
+          // Throttle auto attempts: a longer pause after an accepted sample
+          // gives the operator time to move the board to a new pose.
+          if (auto_attempt)
+            next_auto_attempt = now_s + (sample_accepted ? 1.2 : 0.5);
         }
       }
     }

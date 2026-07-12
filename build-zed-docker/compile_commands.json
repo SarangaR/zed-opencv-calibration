@@ -1,0 +1,72 @@
+[
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/stereo_calibration",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/stereo_calibration/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_stereo_calibration.dir/src/board_detector.cpp.o -c /root/zed-opencv-calibration/stereo_calibration/src/board_detector.cpp",
+  "file": "/root/zed-opencv-calibration/stereo_calibration/src/board_detector.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/stereo_calibration",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/stereo_calibration/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_stereo_calibration.dir/src/calibration_checker.cpp.o -c /root/zed-opencv-calibration/stereo_calibration/src/calibration_checker.cpp",
+  "file": "/root/zed-opencv-calibration/stereo_calibration/src/calibration_checker.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/stereo_calibration",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/stereo_calibration/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_stereo_calibration.dir/src/main.cpp.o -c /root/zed-opencv-calibration/stereo_calibration/src/main.cpp",
+  "file": "/root/zed-opencv-calibration/stereo_calibration/src/main.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/stereo_calibration",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/stereo_calibration/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_stereo_calibration.dir/src/opencv_calibration.cpp.o -c /root/zed-opencv-calibration/stereo_calibration/src/opencv_calibration.cpp",
+  "file": "/root/zed-opencv-calibration/stereo_calibration/src/opencv_calibration.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/stereo_reprojection_viewer",
+  "command": "/usr/bin/c++  -I/usr/local/zed/include -I/usr/local/cuda/include -I/root/zed-opencv-calibration/stereo_reprojection_viewer/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++14 -o CMakeFiles/zed_reprojection_viewer.dir/src/GLViewer.cpp.o -c /root/zed-opencv-calibration/stereo_reprojection_viewer/src/GLViewer.cpp",
+  "file": "/root/zed-opencv-calibration/stereo_reprojection_viewer/src/GLViewer.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/stereo_reprojection_viewer",
+  "command": "/usr/bin/c++  -I/usr/local/zed/include -I/usr/local/cuda/include -I/root/zed-opencv-calibration/stereo_reprojection_viewer/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++14 -o CMakeFiles/zed_reprojection_viewer.dir/src/main.cpp.o -c /root/zed-opencv-calibration/stereo_reprojection_viewer/src/main.cpp",
+  "file": "/root/zed-opencv-calibration/stereo_reprojection_viewer/src/main.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/monocular_calibration",
+  "command": "/usr/bin/c++  -I/root/zed-opencv-calibration/monocular_calibration/include -I/usr/local/cuda/include -I/usr/local/zed/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_calibration.dir/src/board_detector.cpp.o -c /root/zed-opencv-calibration/monocular_calibration/src/board_detector.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_calibration/src/board_detector.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/monocular_calibration",
+  "command": "/usr/bin/c++  -I/root/zed-opencv-calibration/monocular_calibration/include -I/usr/local/cuda/include -I/usr/local/zed/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_calibration.dir/src/calibration_checker.cpp.o -c /root/zed-opencv-calibration/monocular_calibration/src/calibration_checker.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_calibration/src/calibration_checker.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/monocular_calibration",
+  "command": "/usr/bin/c++  -I/root/zed-opencv-calibration/monocular_calibration/include -I/usr/local/cuda/include -I/usr/local/zed/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_calibration.dir/src/main.cpp.o -c /root/zed-opencv-calibration/monocular_calibration/src/main.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_calibration/src/main.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/monocular_calibration",
+  "command": "/usr/bin/c++  -I/root/zed-opencv-calibration/monocular_calibration/include -I/usr/local/cuda/include -I/usr/local/zed/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_calibration.dir/src/opencv_calibration.cpp.o -c /root/zed-opencv-calibration/monocular_calibration/src/opencv_calibration.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_calibration/src/opencv_calibration.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/stereo_checker",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_stereo_checker.dir/src/board_detector.cpp.o -c /root/zed-opencv-calibration/stereo_checker/src/board_detector.cpp",
+  "file": "/root/zed-opencv-calibration/stereo_checker/src/board_detector.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/stereo_checker",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_stereo_checker.dir/src/main.cpp.o -c /root/zed-opencv-calibration/stereo_checker/src/main.cpp",
+  "file": "/root/zed-opencv-calibration/stereo_checker/src/main.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/monocular_checker",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_checker.dir/src/board_detector.cpp.o -c /root/zed-opencv-calibration/monocular_checker/src/board_detector.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_checker/src/board_detector.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/monocular_checker",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_checker.dir/src/main.cpp.o -c /root/zed-opencv-calibration/monocular_checker/src/main.cpp",
+  "file": "/root/zed-opencv-calibration/monocular_checker/src/main.cpp"
+}
+]

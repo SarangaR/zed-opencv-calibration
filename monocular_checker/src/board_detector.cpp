@@ -182,14 +182,13 @@ BoardDetection BoardDetector::detect(const cv::Mat& image) const {
   std::vector<int> charucoIds;
 
 #if CHARUCO_NEW_API
-  impl_->detector.detectBoard(gray, charucoCorners, charucoIds);
+  impl_->detector.detectBoard(gray, charucoCorners, charucoIds,
+                              det.markerCorners, det.markerIds);
 #else
-  std::vector<std::vector<cv::Point2f>> markerCorners;
-  std::vector<int> markerIds;
-  cv::aruco::detectMarkers(gray, impl_->dictionary, markerCorners, markerIds,
-                           impl_->params);
-  if (!markerIds.empty()) {
-    cv::aruco::interpolateCornersCharuco(markerCorners, markerIds, gray,
+  cv::aruco::detectMarkers(gray, impl_->dictionary, det.markerCorners,
+                           det.markerIds, impl_->params);
+  if (!det.markerIds.empty()) {
+    cv::aruco::interpolateCornersCharuco(det.markerCorners, det.markerIds, gray,
                                          impl_->board, charucoCorners,
                                          charucoIds);
   }
@@ -225,13 +224,21 @@ BoardDetection BoardDetector::detect(const cv::Mat& image) const {
 }
 
 void BoardDetector::draw(cv::Mat& bgr, const BoardDetection& det) const {
-  if (!det.found) return;
-
   if (!isCharuco()) {
+    if (!det.found) return;
     cv::drawChessboardCorners(bgr, cv::Size(cfg_.h_edges, cfg_.v_edges),
                               cv::Mat(det.imagePoints), det.found);
     return;
   }
+
+  // Raw ArUco tag outlines, shown even when the board detection failed so the
+  // operator can see exactly which markers the camera picks up.
+  for (const auto& mc : det.markerCorners) {
+    std::vector<cv::Point> poly(mc.begin(), mc.end());
+    cv::polylines(bgr, poly, true, cv::Scalar(0, 255, 0), 3, cv::LINE_AA);
+  }
+
+  if (!det.found) return;
 
   for (size_t k = 0; k < det.imagePoints.size(); k++) {
     cv::circle(bgr, det.imagePoints[k], 4, cv::Scalar(0, 255, 255), -1);
