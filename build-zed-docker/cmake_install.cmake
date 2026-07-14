@@ -49,6 +49,7 @@ if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   include("/root/zed-opencv-calibration/build-zed-docker/monocular_calibration/cmake_install.cmake")
   include("/root/zed-opencv-calibration/build-zed-docker/stereo_checker/cmake_install.cmake")
   include("/root/zed-opencv-calibration/build-zed-docker/monocular_checker/cmake_install.cmake")
+  include("/root/zed-opencv-calibration/build-zed-docker/web_tool/cmake_install.cmake")
 
 endif()
 

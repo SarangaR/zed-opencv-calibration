@@ -53,7 +53,7 @@ void applyPosIndicatorOverlay(cv::Mat& image, const cv::Mat& pos_indicator);
 
 /// Rendering
 constexpr int text_area_height = 380;   // Height of the area below the images
-const cv::Size display_size(720, 404);  // Size of the rendered images
+cv::Size display_size(720, 404);  // 16:9 default; width follows source aspect
 
 /// Calibration condition
 const float max_repr_error = 0.5;  // in pixels
@@ -483,6 +483,11 @@ int main(int argc, char* argv[]) {
       calib.setFrom(zed_info.camera_configuration.calibration_parameters_raw);
 
     sl::Resolution camera_resolution = zed_info.camera_configuration.resolution;
+
+    // Match the preview aspect to the source so the image is not stretched.
+    display_size.width = display_size.height *
+                         static_cast<int>(camera_resolution.width) /
+                         static_cast<int>(camera_resolution.height);
 
     sl::Mat zed_imageL(camera_resolution, sl::MAT_TYPE::U8_C3, sl::MEM::CPU);
     auto rgb_l = cv::Mat(camera_resolution.height, camera_resolution.width,

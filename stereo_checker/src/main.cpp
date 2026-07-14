@@ -35,7 +35,7 @@ bool charuco_legacy = false;
 bool verbose = false;
 int sdk_verbose = 0;
 
-const cv::Size display_size(720, 404);
+cv::Size display_size(720, 404);  // 16:9 default; width follows source aspect
 constexpr int text_area_height = 140;
 const bool image_stack_horizontal = true;
 
@@ -395,6 +395,10 @@ int main(int argc, char* argv[]) {
     auto zed_info = zed_camera.getCameraInformation();
     sl::Resolution cam_res = zed_info.camera_configuration.resolution;
     cv::Size full_size(cam_res.width, cam_res.height);
+
+    // Match the preview aspect to the source so the image is not stretched.
+    display_size.width =
+        display_size.height * full_size.width / full_size.height;
 
     std::cout << " * Camera Model: " << sl::toString(zed_info.camera_model) << std::endl;
     std::cout << " * Camera S/N: " << zed_info.serial_number << std::endl;

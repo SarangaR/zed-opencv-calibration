@@ -12,7 +12,7 @@ FROM ${ZED_BASE}
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libopencv-dev \
+        libopencv-dev python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Driver-provided libs (libcuda, libnvcuvid, libnvidia-encode) are injected by

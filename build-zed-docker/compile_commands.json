@@ -68,5 +68,60 @@
   "directory": "/root/zed-opencv-calibration/build-zed-docker/monocular_checker",
   "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_mono_checker.dir/src/main.cpp.o -c /root/zed-opencv-calibration/monocular_checker/src/main.cpp",
   "file": "/root/zed-opencv-calibration/monocular_checker/src/main.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/web_tool",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/web_tool/src -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_calib_web.dir/src/board_detector.cpp.o -c /root/zed-opencv-calibration/web_tool/src/board_detector.cpp",
+  "file": "/root/zed-opencv-calibration/web_tool/src/board_detector.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/web_tool",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/web_tool/src -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_calib_web.dir/src/http_streamer.cpp.o -c /root/zed-opencv-calibration/web_tool/src/http_streamer.cpp",
+  "file": "/root/zed-opencv-calibration/web_tool/src/http_streamer.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/web_tool",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/web_tool/src -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_calib_web.dir/src/main.cpp.o -c /root/zed-opencv-calibration/web_tool/src/main.cpp",
+  "file": "/root/zed-opencv-calibration/web_tool/src/main.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/web_tool",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/web_tool/src -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_calib_web.dir/src/modes/mono_calib.cpp.o -c /root/zed-opencv-calibration/web_tool/src/modes/mono_calib.cpp",
+  "file": "/root/zed-opencv-calibration/web_tool/src/modes/mono_calib.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/web_tool",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/web_tool/src -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_calib_web.dir/src/modes/mono_check.cpp.o -c /root/zed-opencv-calibration/web_tool/src/modes/mono_check.cpp",
+  "file": "/root/zed-opencv-calibration/web_tool/src/modes/mono_check.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/web_tool",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/web_tool/src -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_calib_web.dir/src/modes/stereo_calib.cpp.o -c /root/zed-opencv-calibration/web_tool/src/modes/stereo_calib.cpp",
+  "file": "/root/zed-opencv-calibration/web_tool/src/modes/stereo_calib.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/web_tool",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/web_tool/src -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_calib_web.dir/src/modes/stereo_check.cpp.o -c /root/zed-opencv-calibration/web_tool/src/modes/stereo_check.cpp",
+  "file": "/root/zed-opencv-calibration/web_tool/src/modes/stereo_check.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/web_tool",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/web_tool/src -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_calib_web.dir/src/monocal/calibration_checker.cpp.o -c /root/zed-opencv-calibration/web_tool/src/monocal/calibration_checker.cpp",
+  "file": "/root/zed-opencv-calibration/web_tool/src/monocal/calibration_checker.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/web_tool",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/web_tool/src -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_calib_web.dir/src/monocal/opencv_calibration.cpp.o -c /root/zed-opencv-calibration/web_tool/src/monocal/opencv_calibration.cpp",
+  "file": "/root/zed-opencv-calibration/web_tool/src/monocal/opencv_calibration.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/web_tool",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/web_tool/src -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_calib_web.dir/src/stereocal/calibration_checker.cpp.o -c /root/zed-opencv-calibration/web_tool/src/stereocal/calibration_checker.cpp",
+  "file": "/root/zed-opencv-calibration/web_tool/src/stereocal/calibration_checker.cpp"
+},
+{
+  "directory": "/root/zed-opencv-calibration/build-zed-docker/web_tool",
+  "command": "/usr/bin/c++  -I/usr/local/cuda/include -I/usr/local/zed/include -I/root/zed-opencv-calibration/web_tool/src -isystem /usr/include/opencv4 -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/zed_calib_web.dir/src/stereocal/opencv_calibration.cpp.o -c /root/zed-opencv-calibration/web_tool/src/stereocal/opencv_calibration.cpp",
+  "file": "/root/zed-opencv-calibration/web_tool/src/stereocal/opencv_calibration.cpp"
 }
 ]

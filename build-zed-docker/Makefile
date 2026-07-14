@@ -181,6 +181,19 @@ zed_mono_checker/fast:
 	$(MAKE) $(MAKESILENT) -f monocular_checker/CMakeFiles/zed_mono_checker.dir/build.make monocular_checker/CMakeFiles/zed_mono_checker.dir/build
 .PHONY : zed_mono_checker/fast
 
+#=============================================================================
+# Target rules for targets named zed_calib_web
+
+# Build rule for target.
+zed_calib_web: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 zed_calib_web
+.PHONY : zed_calib_web
+
+# fast build rule for target.
+zed_calib_web/fast:
+	$(MAKE) $(MAKESILENT) -f web_tool/CMakeFiles/zed_calib_web.dir/build.make web_tool/CMakeFiles/zed_calib_web.dir/build
+.PHONY : zed_calib_web/fast
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -189,6 +202,7 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
+	@echo "... zed_calib_web"
 	@echo "... zed_mono_calibration"
 	@echo "... zed_mono_checker"
 	@echo "... zed_reprojection_viewer"

@@ -36,7 +36,7 @@ bool charuco_legacy = false;
 bool verbose = false;
 int sdk_verbose = 0;
 
-const cv::Size display_size(720, 404);
+cv::Size display_size(720, 404);  // 16:9 default; width follows source aspect
 constexpr int text_area_height = 120;
 
 // ---------------------------------------------------------------------------------
@@ -396,6 +396,11 @@ int main(int argc, char* argv[]) {
                       zed_img.getPtr<sl::uchar1>());
 #endif
     }
+
+    // Match the preview aspect to the source so the image is not stretched
+    // (e.g. 4:3 webcams vs the 16:9 default).
+    display_size.width =
+        display_size.height * full_size.width / full_size.height;
 
     const std::string calib_source = args.calib_opencv_file.empty()
                                          ? "Internal ZED calibration"

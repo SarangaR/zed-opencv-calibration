@@ -15,3 +15,6 @@
 /root/zed-opencv-calibration/build-zed-docker/monocular_checker/CMakeFiles/zed_mono_checker.dir
 /root/zed-opencv-calibration/build-zed-docker/monocular_checker/CMakeFiles/edit_cache.dir
 /root/zed-opencv-calibration/build-zed-docker/monocular_checker/CMakeFiles/rebuild_cache.dir
+/root/zed-opencv-calibration/build-zed-docker/web_tool/CMakeFiles/zed_calib_web.dir
+/root/zed-opencv-calibration/build-zed-docker/web_tool/CMakeFiles/edit_cache.dir
+/root/zed-opencv-calibration/build-zed-docker/web_tool/CMakeFiles/rebuild_cache.dir

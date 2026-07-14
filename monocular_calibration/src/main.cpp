@@ -50,7 +50,7 @@ void applyPosIndicatorOverlay(cv::Mat& image, const cv::Mat& pos_indicator);
 
 /// Rendering
 constexpr int text_area_width = 750;
-const cv::Size display_size(720, 404);
+cv::Size display_size(720, 404);  // 16:9 default; width follows source aspect
 
 /// Calibration condition
 const float max_repr_error = 0.5f;
@@ -405,6 +405,11 @@ int main(int argc, char* argv[]) {
                     zed_image.getPtr<sl::uchar1>());
 #endif
     }
+
+    // Match the preview aspect to the source so the image is not stretched
+    // (e.g. 4:3 webcams vs the 16:9 default).
+    display_size.width =
+        display_size.height * cam_size.width / cam_size.height;
 
     cv::Mat coverage_indicator =
         cv::Mat::zeros(display_size.height, display_size.width, CV_8UC1);

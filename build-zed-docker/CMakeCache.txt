@@ -49,7 +49,7 @@ CMAKE_AR:FILEPATH=/usr/bin/ar
 
 //Choose the type of build, options are: None Debug Release RelWithDebInfo
 // MinSizeRel ...
-CMAKE_BUILD_TYPE:STRING=
+CMAKE_BUILD_TYPE:STRING=Release
 
 //Enable/Disable color output during build.
 CMAKE_COLOR_MAKEFILE:BOOL=ON
@@ -456,6 +456,15 @@ ZED_DIR:PATH=/usr/local/zed
 ZED_FOUND:BOOL=TRUE
 
 //Value Computed by CMake
+zed_calib_web_BINARY_DIR:STATIC=/root/zed-opencv-calibration/build-zed-docker/web_tool
+
+//Value Computed by CMake
+zed_calib_web_IS_TOP_LEVEL:STATIC=OFF
+
+//Value Computed by CMake
+zed_calib_web_SOURCE_DIR:STATIC=/root/zed-opencv-calibration/web_tool
+
+//Value Computed by CMake
 zed_mono_calibration_BINARY_DIR:STATIC=/root/zed-opencv-calibration/build-zed-docker/monocular_calibration
 
 //Value Computed by CMake
@@ -640,7 +649,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_NM
 CMAKE_NM-ADVANCED:INTERNAL=1
 //number of local generators
-CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=6
+CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=7
 //ADVANCED property for variable: CMAKE_OBJCOPY
 CMAKE_OBJCOPY-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_OBJDUMP

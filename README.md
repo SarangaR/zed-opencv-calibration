@@ -169,6 +169,29 @@ Notes:
   calibration solve, outlier rejection, YAML save, reprojection check — everything
   except ZED-specific I/O. Stereo tools stay ZED-only.
 
+## Web UI (headless, port 30000)
+
+The whole toolkit can run as a website — no X11/VNC needed. A Python launcher
+(`web/server.py`) serves a tab UI (Mono/Stereo Calibration, Mono/Stereo
+Checker), spawns the headless engine `zed_calib_web` (`web_tool/`, all four
+pipelines in one binary with the GUI replaced by an MJPEG stream), and proxies
+its video.
+
+```bash
+./run_docker_web.sh              # builds image + engine, serves port 30000
+# then open http://<jetson-ip>:30000 from the tethered machine
+```
+
+- Each tab has a start form (camera source, board geometry, mirror, fisheye);
+  everything maps 1:1 to the CLI flags of the standalone tools.
+- Calibration runs hands-free: auto-capture saves every frame that improves
+  coverage/size/skew diversity and the solve starts automatically when the
+  metrics complete (or at the max sample count). Outputs (`.yml` / `.conf`)
+  land in the repo folder.
+- Stop button sends SIGINT to the engine (graceful camera release).
+- The raw stream is also viewable in VLC at `http://<jetson-ip>:30000/api/stream`.
+- One run at a time (one camera); starting while running returns 409.
+
 ## Usage
 
 ### Monocular Calibration

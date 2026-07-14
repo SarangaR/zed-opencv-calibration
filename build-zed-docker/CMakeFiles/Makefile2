@@ -68,6 +68,7 @@ all: stereo_reprojection_viewer/all
 all: monocular_calibration/all
 all: stereo_checker/all
 all: monocular_checker/all
+all: web_tool/all
 .PHONY : all
 
 # The main recursive "preinstall" target.
@@ -76,6 +77,7 @@ preinstall: stereo_reprojection_viewer/preinstall
 preinstall: monocular_calibration/preinstall
 preinstall: stereo_checker/preinstall
 preinstall: monocular_checker/preinstall
+preinstall: web_tool/preinstall
 .PHONY : preinstall
 
 # The main recursive "clean" target.
@@ -84,6 +86,7 @@ clean: stereo_reprojection_viewer/clean
 clean: monocular_calibration/clean
 clean: stereo_checker/clean
 clean: monocular_checker/clean
+clean: web_tool/clean
 .PHONY : clean
 
 #=============================================================================
@@ -162,13 +165,28 @@ stereo_reprojection_viewer/clean: stereo_reprojection_viewer/CMakeFiles/zed_repr
 .PHONY : stereo_reprojection_viewer/clean
 
 #=============================================================================
+# Directory level rules for directory web_tool
+
+# Recursive "all" directory target.
+web_tool/all: web_tool/CMakeFiles/zed_calib_web.dir/all
+.PHONY : web_tool/all
+
+# Recursive "preinstall" directory target.
+web_tool/preinstall:
+.PHONY : web_tool/preinstall
+
+# Recursive "clean" directory target.
+web_tool/clean: web_tool/CMakeFiles/zed_calib_web.dir/clean
+.PHONY : web_tool/clean
+
+#=============================================================================
 # Target rules for target stereo_calibration/CMakeFiles/zed_stereo_calibration.dir
 
 # All Build rule for target.
 stereo_calibration/CMakeFiles/zed_stereo_calibration.dir/all:
 	$(MAKE) $(MAKESILENT) -f stereo_calibration/CMakeFiles/zed_stereo_calibration.dir/build.make stereo_calibration/CMakeFiles/zed_stereo_calibration.dir/depend
 	$(MAKE) $(MAKESILENT) -f stereo_calibration/CMakeFiles/zed_stereo_calibration.dir/build.make stereo_calibration/CMakeFiles/zed_stereo_calibration.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/root/zed-opencv-calibration/build-zed-docker/CMakeFiles --progress-num=12,13,14,15,16 "Built target zed_stereo_calibration"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/root/zed-opencv-calibration/build-zed-docker/CMakeFiles --progress-num=24,25,26,27,28 "Built target zed_stereo_calibration"
 .PHONY : stereo_calibration/CMakeFiles/zed_stereo_calibration.dir/all
 
 # Build rule for subdir invocation for target.
@@ -194,7 +212,7 @@ stereo_calibration/CMakeFiles/zed_stereo_calibration.dir/clean:
 stereo_reprojection_viewer/CMakeFiles/zed_reprojection_viewer.dir/all:
 	$(MAKE) $(MAKESILENT) -f stereo_reprojection_viewer/CMakeFiles/zed_reprojection_viewer.dir/build.make stereo_reprojection_viewer/CMakeFiles/zed_reprojection_viewer.dir/depend
 	$(MAKE) $(MAKESILENT) -f stereo_reprojection_viewer/CMakeFiles/zed_reprojection_viewer.dir/build.make stereo_reprojection_viewer/CMakeFiles/zed_reprojection_viewer.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/root/zed-opencv-calibration/build-zed-docker/CMakeFiles --progress-num=9,10,11 "Built target zed_reprojection_viewer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/root/zed-opencv-calibration/build-zed-docker/CMakeFiles --progress-num=21,22,23 "Built target zed_reprojection_viewer"
 .PHONY : stereo_reprojection_viewer/CMakeFiles/zed_reprojection_viewer.dir/all
 
 # Build rule for subdir invocation for target.
@@ -220,7 +238,7 @@ stereo_reprojection_viewer/CMakeFiles/zed_reprojection_viewer.dir/clean:
 monocular_calibration/CMakeFiles/zed_mono_calibration.dir/all:
 	$(MAKE) $(MAKESILENT) -f monocular_calibration/CMakeFiles/zed_mono_calibration.dir/build.make monocular_calibration/CMakeFiles/zed_mono_calibration.dir/depend
 	$(MAKE) $(MAKESILENT) -f monocular_calibration/CMakeFiles/zed_mono_calibration.dir/build.make monocular_calibration/CMakeFiles/zed_mono_calibration.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/root/zed-opencv-calibration/build-zed-docker/CMakeFiles --progress-num=1,2,3,4,5 "Built target zed_mono_calibration"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/root/zed-opencv-calibration/build-zed-docker/CMakeFiles --progress-num=13,14,15,16,17 "Built target zed_mono_calibration"
 .PHONY : monocular_calibration/CMakeFiles/zed_mono_calibration.dir/all
 
 # Build rule for subdir invocation for target.
@@ -246,7 +264,7 @@ monocular_calibration/CMakeFiles/zed_mono_calibration.dir/clean:
 stereo_checker/CMakeFiles/zed_stereo_checker.dir/all:
 	$(MAKE) $(MAKESILENT) -f stereo_checker/CMakeFiles/zed_stereo_checker.dir/build.make stereo_checker/CMakeFiles/zed_stereo_checker.dir/depend
 	$(MAKE) $(MAKESILENT) -f stereo_checker/CMakeFiles/zed_stereo_checker.dir/build.make stereo_checker/CMakeFiles/zed_stereo_checker.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/root/zed-opencv-calibration/build-zed-docker/CMakeFiles --progress-num=17,18,19 "Built target zed_stereo_checker"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/root/zed-opencv-calibration/build-zed-docker/CMakeFiles --progress-num=29,30,31 "Built target zed_stereo_checker"
 .PHONY : stereo_checker/CMakeFiles/zed_stereo_checker.dir/all
 
 # Build rule for subdir invocation for target.
@@ -272,7 +290,7 @@ stereo_checker/CMakeFiles/zed_stereo_checker.dir/clean:
 monocular_checker/CMakeFiles/zed_mono_checker.dir/all:
 	$(MAKE) $(MAKESILENT) -f monocular_checker/CMakeFiles/zed_mono_checker.dir/build.make monocular_checker/CMakeFiles/zed_mono_checker.dir/depend
 	$(MAKE) $(MAKESILENT) -f monocular_checker/CMakeFiles/zed_mono_checker.dir/build.make monocular_checker/CMakeFiles/zed_mono_checker.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/root/zed-opencv-calibration/build-zed-docker/CMakeFiles --progress-num=6,7,8 "Built target zed_mono_checker"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/root/zed-opencv-calibration/build-zed-docker/CMakeFiles --progress-num=18,19,20 "Built target zed_mono_checker"
 .PHONY : monocular_checker/CMakeFiles/zed_mono_checker.dir/all
 
 # Build rule for subdir invocation for target.
@@ -290,6 +308,32 @@ zed_mono_checker: monocular_checker/CMakeFiles/zed_mono_checker.dir/rule
 monocular_checker/CMakeFiles/zed_mono_checker.dir/clean:
 	$(MAKE) $(MAKESILENT) -f monocular_checker/CMakeFiles/zed_mono_checker.dir/build.make monocular_checker/CMakeFiles/zed_mono_checker.dir/clean
 .PHONY : monocular_checker/CMakeFiles/zed_mono_checker.dir/clean
+
+#=============================================================================
+# Target rules for target web_tool/CMakeFiles/zed_calib_web.dir
+
+# All Build rule for target.
+web_tool/CMakeFiles/zed_calib_web.dir/all:
+	$(MAKE) $(MAKESILENT) -f web_tool/CMakeFiles/zed_calib_web.dir/build.make web_tool/CMakeFiles/zed_calib_web.dir/depend
+	$(MAKE) $(MAKESILENT) -f web_tool/CMakeFiles/zed_calib_web.dir/build.make web_tool/CMakeFiles/zed_calib_web.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/root/zed-opencv-calibration/build-zed-docker/CMakeFiles --progress-num=1,2,3,4,5,6,7,8,9,10,11,12 "Built target zed_calib_web"
+.PHONY : web_tool/CMakeFiles/zed_calib_web.dir/all
+
+# Build rule for subdir invocation for target.
+web_tool/CMakeFiles/zed_calib_web.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /root/zed-opencv-calibration/build-zed-docker/CMakeFiles 12
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 web_tool/CMakeFiles/zed_calib_web.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /root/zed-opencv-calibration/build-zed-docker/CMakeFiles 0
+.PHONY : web_tool/CMakeFiles/zed_calib_web.dir/rule
+
+# Convenience name for target.
+zed_calib_web: web_tool/CMakeFiles/zed_calib_web.dir/rule
+.PHONY : zed_calib_web
+
+# clean rule for target.
+web_tool/CMakeFiles/zed_calib_web.dir/clean:
+	$(MAKE) $(MAKESILENT) -f web_tool/CMakeFiles/zed_calib_web.dir/build.make web_tool/CMakeFiles/zed_calib_web.dir/clean
+.PHONY : web_tool/CMakeFiles/zed_calib_web.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

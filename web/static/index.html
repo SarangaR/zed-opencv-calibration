@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZED Calibration</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #14171c; color: #dde3ea;
+         font: 14px/1.45 system-ui, sans-serif; }
+  header { padding: 14px 20px 0; }
+  h1 { margin: 0 0 10px; font-size: 18px; font-weight: 600; }
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid #2a3038;
+          padding: 0 20px; }
+  .tabs button { background: none; border: none; color: #8b95a3;
+                 padding: 10px 14px; font: inherit; cursor: pointer;
+                 border-bottom: 2px solid transparent; }
+  .tabs button.active { color: #fff; border-bottom-color: #3fa34d; }
+  main { display: flex; flex-wrap: wrap; gap: 20px; padding: 20px; }
+  form { width: 340px; flex-shrink: 0; }
+  fieldset { border: 1px solid #2a3038; border-radius: 8px;
+             margin: 0 0 14px; padding: 10px 14px 14px; }
+  legend { color: #8b95a3; padding: 0 6px; font-size: 12px;
+           text-transform: uppercase; letter-spacing: .05em; }
+  label { display: flex; justify-content: space-between; align-items: center;
+          gap: 10px; margin: 7px 0; }
+  input[type=text], input[type=number], select {
+      background: #1d232b; color: #dde3ea; border: 1px solid #333b46;
+      border-radius: 5px; padding: 5px 8px; width: 150px; font: inherit; }
+  input[type=checkbox] { width: auto; accent-color: #3fa34d; }
+  input[type=file] { width: 150px; font: inherit; color: #8b95a3; }
+  #files { margin-top: 12px; padding: 10px 12px; border-radius: 6px;
+           background: #1d232b; border: 1px solid #333b46; }
+  #files h2 { margin: 0 0 6px; font-size: 12px; font-weight: 600;
+              color: #8b95a3; text-transform: uppercase;
+              letter-spacing: .05em; }
+  #files a { color: #6ab0f3; text-decoration: none; }
+  #files a:hover { text-decoration: underline; }
+  #files li { list-style: none; margin: 3px 0; }
+  #files ul { margin: 0; padding: 0; }
+  #files .meta { color: #667080; font-size: 12px; margin-left: 6px; }
+  .row { display: flex; gap: 10px; }
+  .row button { flex: 1; padding: 10px; font: inherit; font-weight: 600;
+                border: none; border-radius: 6px; cursor: pointer; }
+  #start { background: #3fa34d; color: #fff; }
+  #start:disabled, #stop:disabled { opacity: .4; cursor: default; }
+  #stop { background: #a33f3f; color: #fff; }
+  #capture { background: #2f6db3; color: #fff; }
+  #auto-toggle { background: #3a4250; color: #cfd6df; }
+  #auto-toggle.on { background: #3fa34d; color: #fff; }
+  #status { margin-top: 12px; padding: 10px 12px; border-radius: 6px;
+            background: #1d232b; border: 1px solid #333b46; color: #8b95a3;
+            min-height: 40px; white-space: pre-wrap; }
+  #status.ok { color: #6ecb7a; }  #status.err { color: #e07b7b; }
+  .view { flex: 1; min-width: 480px; }
+  .view img { width: 100%; max-width: 1500px; background: #000;
+              border: 1px solid #2a3038; border-radius: 8px; min-height: 240px; }
+  .hint { color: #667080; font-size: 12px; margin: 6px 2px; }
+</style>
+</head>
+<body>
+<header><h1>ZED Calibration Toolkit</h1></header>
+
+<nav class="tabs">
+  <button data-tab="mono_calib"   class="active">Mono Calibration</button>
+  <button data-tab="stereo_calib">Stereo Calibration</button>
+  <button data-tab="mono_check">Mono Checker</button>
+  <button data-tab="stereo_check">Stereo Checker</button>
+</nav>
+
+<main>
+<form id="form" onsubmit="return false">
+  <fieldset id="fs-source">
+    <legend>Camera</legend>
+    <label>Source
+      <select id="source">
+        <option value="auto">ZED (first found)</option>
+        <option value="id">ZED by camera ID</option>
+        <option value="sn">ZED by serial number</option>
+        <option value="svo">SVO recording</option>
+        <option value="webcam">Webcam (test mode)</option>
+      </select>
+    </label>
+    <label id="l-source-value" hidden>Value
+      <input type="text" id="source-value" placeholder="0">
+    </label>
+    <label id="l-virtual" hidden>Virtual rig (2x ZED X One)
+      <input type="checkbox" id="virtual">
+    </label>
+    <span id="virtual-fields" hidden>
+      <label>Left (id or SN) <input type="text" id="left-cam" placeholder="0"></label>
+      <label>Right (id or SN) <input type="text" id="right-cam" placeholder="1"></label>
+      <label>Values are SNs <input type="checkbox" id="virtual-by-sn"></label>
+    </span>
+  </fieldset>
+
+  <fieldset id="fs-calibfile" hidden>
+    <legend>Calibration under test</legend>
+    <label>OpenCV .yml file
+      <input type="file" id="calib-file" accept=".yml,.yaml">
+    </label>
+    <div class="hint">Uploaded from this computer. Leave empty to use the
+      camera's internal calibration. Required for the webcam source.</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Board</legend>
+    <label>Type
+      <select id="board-type">
+        <option value="charuco">ChArUco</option>
+        <option value="chessboard">Chessboard</option>
+      </select>
+    </label>
+    <span id="charuco-fields">
+      <label>Squares X <input type="number" id="squares_x" value="15"></label>
+      <label>Squares Y <input type="number" id="squares_y" value="11"></label>
+      <label>Square size (mm) <input type="number" id="square_size_ch" value="15" step="0.1"></label>
+      <label>Marker size (mm) <input type="number" id="marker_size" value="11" step="0.1"></label>
+      <label>Dictionary <input type="text" id="dict" value="DICT_4X4_250"></label>
+      <label>Legacy layout (pre-4.7) <input type="checkbox" id="charuco_legacy"></label>
+    </span>
+    <span id="chess-fields" hidden>
+      <label>Inner edges X <input type="number" id="h_edges" value="9"></label>
+      <label>Inner edges Y <input type="number" id="v_edges" value="6"></label>
+      <label>Square size (mm) <input type="number" id="square_size_cb" value="25.4" step="0.1"></label>
+    </span>
+  </fieldset>
+
+  <fieldset>
+    <legend>Options</legend>
+    <label>Mirror preview (selfie) <input type="checkbox" id="mirror" checked></label>
+    <label>Fisheye lens model <input type="checkbox" id="fisheye"></label>
+  </fieldset>
+
+  <div class="row">
+    <button id="start">Start</button>
+    <button id="stop" disabled>Stop</button>
+  </div>
+  <div class="row" id="live-controls" hidden style="margin-top:10px">
+    <button id="capture">Capture frame</button>
+    <button id="auto-toggle" class="on">Auto-capture: ON</button>
+  </div>
+  <div id="status">Idle.</div>
+
+  <div id="files">
+    <h2>Output files</h2>
+    <ul id="file-list"><li class="meta">None yet.</li></ul>
+  </div>
+</form>
+
+<div class="view">
+  <img id="stream" alt="Stream appears here after Start">
+  <div class="hint" id="view-hint">
+    Calibration runs hands-free: auto-capture saves every frame that improves
+    coverage / size / skew diversity, and the calibration is computed
+    automatically once the metrics are complete (or at the max sample count).
+    Output .yml / .conf files land in the repo folder.
+  </div>
+</div>
+</main>
+
+<script>
+'use strict';
+let tab = 'mono_calib';
+const $ = id => document.getElementById(id);
+
+const isCalib = () => tab.endsWith('_calib');
+const isStereo = () => tab.startsWith('stereo');
+
+function refreshForm() {
+  const src = $('source');
+  // Webcam is a mono-only test mode; virtual rig is stereo-only.
+  src.querySelector('[value=webcam]').hidden = isStereo();
+  if (isStereo() && src.value === 'webcam') src.value = 'auto';
+  $('l-virtual').hidden = !isStereo();
+  $('virtual-fields').hidden = !isStereo() || !$('virtual').checked;
+  const needsValue = ['id', 'sn', 'svo', 'webcam'].includes(src.value);
+  $('l-source-value').hidden = !needsValue;
+  $('source-value').placeholder =
+      src.value === 'svo' ? 'recording.svo' :
+      src.value === 'sn' ? '12345678' : '0';
+  $('fs-calibfile').hidden = isCalib();
+  $('charuco-fields').hidden = $('board-type').value !== 'charuco';
+  $('chess-fields').hidden = $('board-type').value === 'charuco';
+  $('view-hint').hidden = !isCalib();
+}
+
+function buildArgs() {
+  const a = [];
+  const src = $('source').value, val = $('source-value').value.trim();
+  if (src === 'svo') a.push('--svo', val);
+  else if (src === 'webcam') a.push('--webcam', val || '0');
+  else if (src === 'id') a.push('--id', val);
+  else if (src === 'sn') a.push('--sn', val);
+  if (isStereo() && $('virtual').checked) {
+    a.push('--virtual');
+    const bySn = $('virtual-by-sn').checked;
+    a.push(bySn ? '--left_sn' : '--left_id', $('left-cam').value.trim());
+    a.push(bySn ? '--right_sn' : '--right_id', $('right-cam').value.trim());
+  }
+  if ($('board-type').value === 'charuco') {
+    a.push('--charuco',
+           '--squares_x', $('squares_x').value,
+           '--squares_y', $('squares_y').value,
+           '--square_size', $('square_size_ch').value,
+           '--marker_size', $('marker_size').value,
+           '--dict', $('dict').value.trim());
+    if ($('charuco_legacy').checked) a.push('--charuco_legacy');
+  } else {
+    a.push('--h_edges', $('h_edges').value,
+           '--v_edges', $('v_edges').value,
+           '--square_size', $('square_size_cb').value);
+  }
+  if ($('mirror').checked) a.push('--mirror');
+  if ($('fisheye').checked) a.push('--fisheye');
+  return a;
+}
+
+function setStatus(text, cls) {
+  const s = $('status');
+  s.textContent = text;
+  s.className = cls || '';
+}
+
+let runningMode = null;
+let autoOn = true;  // engine default at each start
+
+function renderAuto() {
+  const b = $('auto-toggle');
+  b.textContent = 'Auto-capture: ' + (autoOn ? 'ON' : 'OFF');
+  b.classList.toggle('on', autoOn);
+}
+
+async function start() {
+  const args = buildArgs();
+  const calibFile = $('calib-file').files[0];
+  if (!isCalib() && calibFile) {
+    setStatus('Uploading ' + calibFile.name + ' ...');
+    const up = await fetch('/api/upload?name=' +
+                           encodeURIComponent(calibFile.name),
+                           {method: 'POST', body: calibFile});
+    const uj = await up.json();
+    if (!up.ok) { setStatus('Upload failed: ' + uj.error, 'err'); return; }
+    args.push('--calib_opencv', uj.path);
+  }
+  setStatus('Starting ' + tab + ' ...');
+  const r = await fetch('/api/start', {
+    method: 'POST',
+    body: JSON.stringify({mode: tab, args})
+  });
+  const j = await r.json();
+  if (!r.ok) { setStatus('Cannot start: ' + j.message ?? j.error, 'err'); return; }
+  runningMode = tab;
+  autoOn = true;
+  renderAuto();
+  $('stream').src = '/api/stream?t=' + Date.now();
+}
+
+async function stop() {
+  setStatus('Stopping ...');
+  await fetch('/api/stop', {method: 'POST'});
+}
+
+async function poll() {
+  try {
+    const s = await (await fetch('/api/status')).json();
+    $('start').disabled = s.running;
+    $('stop').disabled = !s.running;
+    $('live-controls').hidden =
+        !(s.running && s.mode && s.mode.endsWith('_calib'));
+    if (s.running) {
+      runningMode = s.mode;
+      setStatus('Running: ' + s.mode + '\nStream also at /api/stream (VLC).', 'ok');
+      if (!$('stream').src.includes('/api/stream'))
+        $('stream').src = '/api/stream?t=' + Date.now();
+    } else if (s.exit_code !== null && runningMode) {
+      if (s.exit_code === 0)
+        setStatus('Finished: ' + s.mode + (s.mode.endsWith('_calib')
+            ? '\nCalibration written to the repo folder (.yml / .conf).' : ''), 'ok');
+      else
+        setStatus('Exited with code ' + s.exit_code + ' (' + s.mode +
+                  ').\nCheck the launcher console for details.', 'err');
+      runningMode = null;
+      $('stream').removeAttribute('src');
+      refreshFiles();  // new outputs may have appeared
+    }
+  } catch (e) { setStatus('Launcher unreachable.', 'err'); }
+}
+
+async function refreshFiles() {
+  try {
+    const j = await (await fetch('/api/files')).json();
+    const ul = $('file-list');
+    ul.innerHTML = '';
+    if (!j.files.length) {
+      ul.innerHTML = '<li class="meta">None yet.</li>';
+      return;
+    }
+    for (const f of j.files) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = '/api/download?name=' + encodeURIComponent(f.name);
+      a.textContent = f.name;
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = (f.size / 1024).toFixed(1) + ' KiB, ' +
+          new Date(f.mtime * 1000).toLocaleString();
+      li.append(a, meta);
+      ul.appendChild(li);
+    }
+  } catch (e) { /* launcher down -- poll() already reports it */ }
+}
+
+document.querySelectorAll('.tabs button').forEach(b => {
+  b.onclick = () => {
+    document.querySelector('.tabs .active').classList.remove('active');
+    b.classList.add('active');
+    tab = b.dataset.tab;
+    refreshForm();
+  };
+});
+['source', 'board-type'].forEach(id => $(id).onchange = refreshForm);
+$('virtual').onchange = refreshForm;
+$('start').onclick = start;
+$('stop').onclick = stop;
+$('capture').onclick = () => fetch('/api/ctrl?capture=1');
+$('auto-toggle').onclick = async () => {
+  autoOn = !autoOn;
+  renderAuto();
+  await fetch('/api/ctrl?auto=' + (autoOn ? 1 : 0));
+};
+refreshForm();
+refreshFiles();
+setInterval(poll, 1000);
+poll();
+</script>
+</body>
+</html>
